@@ -5,37 +5,37 @@
  */
 export interface InternalInvoiceRecord {
     /** Unique identifier assigned during processing */
-    id: string; // Removed readonly
+    id: string; 
     /** Source of the record ('local' or 'portal') */
-    source: 'local' | 'portal'; // Removed readonly (or assign during parsing)
+    source: 'local' | 'portal'; // (or assign during parsing)
     /** Supplier GST Identification Number */
-    supplierGstin: string; // Removed readonly
+    supplierGstin: string; 
     /** Supplier Name (optional, might only be in portal data) */
-    supplierName?: string; // Removed readonly
+    supplierName?: string; 
     /** Original invoice number string as it appeared in the source */
-    invoiceNumberRaw: string; // Removed readonly
+    invoiceNumberRaw: string; 
     /** Normalized invoice number used for matching */
-    invoiceNumberNormalized: string; // Removed readonly (will be set later)
+    invoiceNumberNormalized: string; // (will be set later)
     /** Invoice date */
-    date: Date; // Removed readonly
+    date: Date; 
     /** Canonical representation of month and year (e.g., "YYYY-MM") */
-    dateMonthYear: string; // Removed readonly (will be set later)
+    dateMonthYear: string;  //(will be set later)
     /** Taxable value (value before tax) */
-    taxableAmount: number; // Removed readonly
+    taxableAmount: number; 
     /** Integrated Goods and Services Tax amount */
-    igst: number; // Removed readonly
+    igst: number; 
     /** Central Goods and Services Tax amount */
-    cgst: number; // Removed readonly
+    cgst: number; 
     /** State Goods and Services Tax amount */
-    sgst: number; // Removed readonly
+    sgst: number; 
     /** Total tax amount (IGST or CGST + SGST) */
-    totalTax: number; // Removed readonly (will be calculated later)
+    totalTax: number; // (will be calculated later)
     /** Total Invoice Value (Taxable Amount + Total Tax) - Calculated or from source */
-    invoiceValue: number; // Removed readonly
+    invoiceValue: number; 
     /** Line number from the original file (optional, for tracing) */
-    originalLineNumber?: number; // Removed readonly
+    originalLineNumber?: number; 
     /** Raw data record from parsing (optional, for debugging) */
-    rawData?: any; // Removed readonly
+    rawData?: any; 
 }
 
 /**
