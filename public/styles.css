@@ -1,0 +1,30 @@
+/* public/styles.css */
+body {
+    padding-bottom: 60px; /* Add some space at the bottom */
+}
+
+.results-box {
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6; /* Match Bootstrap card border */
+}
+
+#resultsJson {
+    white-space: pre-wrap; /* Wrap long lines in JSON */
+    word-wrap: break-word;
+}
+
+/* Helper class to visually show/hide elements properly */
+.visually-hidden {
+  position: absolute !important;
+  height: 1px; width: 1px;
+  overflow: hidden;
+  clip: rect(1px 1px 1px 1px); /* IE6, IE7 */
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap; /* Required for accessibility */
+}
+
+/* Add some margin to status alerts */
+#statusArea, #exportStatusArea {
+    margin-top: 1rem;
+}
