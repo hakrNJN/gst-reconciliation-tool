@@ -5,6 +5,7 @@ import { InternalInvoiceRecord, ReconciliationResults } from '../../common/inter
 export interface ReconciliationOptions {
     toleranceAmount?: number;
     toleranceTax?: number;
+    dateMatchStrategy?: 'month' | 'fy';
     // Add other potential options here
 }
 

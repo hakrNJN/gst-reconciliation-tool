@@ -6,6 +6,7 @@ export interface FileParsingOptions {
     fileTypeHint?: 'excel' | 'json'; // Hint if file extension is missing/ambiguous
     sheetName?: string; // Specify sheet name for Excel
     headerRow?: number; // Specify header row index
+    includeRawData?: boolean; // Include raw data in the output
     // Add other potential options
 }
 

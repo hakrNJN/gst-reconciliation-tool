@@ -36,6 +36,19 @@ export interface InternalInvoiceRecord {
     originalLineNumber?: number; 
     /** Raw data record from parsing (optional, for debugging) */
     rawData?: any; 
+
+     // --- Fields primarily from Portal Data (GSTR-2B) ---
+    /** Place of Supply (e.g., state code) */
+    placeOfSupply?: string;
+    /** Is Reverse Charge applicable? ('Y'/'N' from portal -> boolean) */
+    reverseCharge?: boolean;
+    /** Is ITC Available based on portal data? ('Y'/'N' from portal -> boolean) */
+    itcAvailable?: boolean;
+    /** Reason code/text if ITC is not available */
+    itcReason?: string;
+    /** Type ('INV', 'CDN', 'CDNA' etc.) */
+    documentType?: string; // To distinguish invoices from notes if parsing both
+    financialYear: string; // Financial year (e.g., "2023-24") - calculated from date
 }
 
 /**
