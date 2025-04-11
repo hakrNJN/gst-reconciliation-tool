@@ -7,7 +7,7 @@ Streamline your GST reconciliation process! ✅ This project provides a robust b
 This README covers the current state of the project (Phase 1: Backend API with Test Frontend).
 
 _(Screenshot of the current Test UI)_
-![Test UI Screenshot](Screenshot.png)
+![Test UI Screenshot](public/Screenshot.png)
 
 ## Features (Current - Phase 1) ✨
 
