@@ -10,72 +10,7 @@
       integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
       crossorigin="anonymous"
     />
-    <!-- <style>
-      body {
-        padding-bottom: 60px;
-      }
-
-      #statusArea,
-      #exportStatusArea {
-        margin-top: 1rem;
-      }
-
-      /* Make table text smaller and wrap */
-      #resultsTable td,
-      #resultsTable th {
-        font-size: 0.85rem;
-        white-space: nowrap; /* Prevent wrapping initially */
-      }
-      /* Allow specific columns to wrap if needed by adding a class in JS */
-      .wrap-text {
-        white-space: normal !important;
-      }
-
-      /* Table container styling */
-      .table-responsive {
-        max-height: 400px; /* Set a fixed max height */
-        overflow-y: auto; /* Enable vertical scrolling */
-        overflow-x: auto; /* Enable horizontal scrolling if needed */
-        width: 100%; /* Take full width of parent container */
-        margin-bottom: 20px; /* Space below table */
-      }
-
-      /* Make table use full width of container */
-      #resultsTable {
-        width: 100%;
-        table-layout: auto; /* Allow table to adjust column widths based on content */
-      }
-
-      /* Make export button clearly positioned below table */
-      #exportButton {
-        display: block; /* Force button to take its own line */
-        margin-top: 20px;
-        margin-bottom: 30px;
-      }
-
-      /* Visually hidden class */
-      .visually-hidden {
-        position: absolute !important;
-        height: 1px;
-        width: 1px;
-        overflow: hidden;
-        clip: rect(1px 1px 1px 1px);
-        clip: rect(1px, 1px, 1px, 1px);
-        white-space: nowrap;
-      }
-
-      /* Override for making sections visible */
-      section:not(.visually-hidden),
-      #resultsTableContainer:not(.visually-hidden),
-      #noResultsMessage:not(.visually-hidden) {
-        position: static !important;
-        height: auto;
-        width: auto;
-        overflow: visible;
-        clip: auto;
-        white-space: normal;
-      }
-    </style> -->
+  
   </head>
   <body>
     <div class="container mt-4">
@@ -93,9 +28,12 @@
             <!-- 1. File upload options side by side -->
             <div class="row mb-3">
               <div class="col-md-6">
-                <label for="localFile" class="form-label"
-                  >1. Local Purchase Data (Excel/JSON)</label
-                >
+                <label for="localFile" class="form-label">
+                  1. Local Purchase Data (Excel/JSON) -
+                  <a href="Purchase Data Sample.xlsx" download="Purchase Data Sample.xlsx" title="Download sample local purchase data format">
+                    Sample File
+                  </a>
+                </label>
                 <input
                   class="form-control"
                   type="file"
@@ -123,98 +61,113 @@
             <hr />
 
             <!-- 2. Reconciliation options horizontally stacked -->
-            <div class="row align-items-end g-3">
-              <!-- Tolerance options -->
-              <div class="col-md-4">
-                <h6>Reconciliation Options</h6>
-                <div class="row g-2">
-                  <div class="col-6">
-                    <label for="toleranceAmount" class="form-label"
-                      >Taxable Amount Tolerance</label
-                    >
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="toleranceAmount"
-                      name="toleranceAmount"
-                      value="5.00"
-                      step="0.01"
-                      required
-                    />
+            <div class="row g-3 align-items-stretch mb-3"> 
+            <!-- Card 1: Tolerance Options -->
+            <div class="col-md-6 col-lg-3">
+              <div class="card h-100 card-min-height"> 
+                <div class="card-body d-flex flex-column"> 
+                  <h6 class="card-subtitle mb-2 text-muted">Amont Tolerance</h6>
+                  <div class="row g-2 flex-grow-1">
+                    <div class="col-6">
+                      <label for="toleranceAmount" class="form-label" style="font-size: 0.85em;">Taxable Amount</label>
+                      <input
+                        type="number"
+                        class="form-control form-control-sm"
+                        id="toleranceAmount"
+                        name="toleranceAmount"
+                        value="5.00"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                    <div class="col-6">
+                      <label for="toleranceTax" class="form-label" style="font-size: 0.85em;">Tax Amount</label>
+                      <input
+                        type="number"
+                        class="form-control form-control-sm"
+                        id="toleranceTax"
+                        name="toleranceTax"
+                        value="1.00"
+                        step="0.01"
+                        required
+                      />
+                    </div>
                   </div>
-                  <div class="col-6">
-                    <label for="toleranceTax" class="form-label"
-                      >Tax Tolerance</label
-                    >
+                </div>
+              </div>
+            </div>
+
+             <!-- Card 2: Date Matching Options -->
+             <div class="col-md-6 col-lg-3">
+              <div class="card h-100 card-min-height">
+                <div class="card-body">
+                  <h6 class="card-subtitle mb-2 text-muted">Date Tolerance</h6>
+                  <div class="form-check">
                     <input
-                      type="number"
-                      class="form-control"
-                      id="toleranceTax"
-                      name="toleranceTax"
-                      value="1.00"
-                      step="0.01"
-                      required
+                      class="form-check-input"
+                      type="radio"
+                      name="dateMatchStrategy"
+                      id="dateMatchMonth"
+                      value="month"
+                      checked
                     />
+                    <label class="form-check-label" for="dateMatchMonth"
+                      >This Month Only</label
+                    >
+                  </div>
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="radio"
+                      name="dateMatchStrategy"
+                      id="dateMatchFY"
+                      value="fy"
+                    />
+                    <label class="form-check-label" for="dateMatchFY"
+                      >Entire Financial Year</label
+                    >
                   </div>
                 </div>
               </div>
+            </div>
 
-              <!-- Date matching options -->
-              <div class="col-md-4">
-                <label class="form-label d-block">Invoice Date Matching</label>
-                <div class="form-check form-check-inline">
-                  <input
-                    class="form-check-input"
-                    type="radio"
-                    name="dateMatchStrategy"
-                    id="dateMatchMonth"
-                    value="month"
-                    checked
-                  />
-                  <label class="form-check-label" for="dateMatchMonth"
-                    >This Month</label
-                  >
-                </div>
-                <div class="form-check form-check-inline">
-                  <input
-                    class="form-check-input"
-                    type="radio"
-                    name="dateMatchStrategy"
-                    id="dateMatchFY"
-                    value="fy"
-                  />
-                  <label class="form-check-label" for="dateMatchFY"
-                    >This Financial Year</label
-                  >
+            <!-- Card 3: Reconciliation Scope Options -->
+            <div class="col-md-6 col-lg-3">
+              <div class="card h-100 card-min-height">
+                 <div class="card-body">
+                   <h6 class="card-subtitle mb-2 text-muted">Reconciliation Scope</h6>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeAll" value="all" checked>
+                        <label class="form-check-label" for="scopeAll">All Invoices</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeB2B" value="b2b">
+                        <label class="form-check-label" for="scopeB2B">B2B Only</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeCDNR" value="cdnr">
+                        <label class="form-check-label" for="scopeCDNR">CDNR Only</label>
+                    </div>
                 </div>
               </div>
-            </div> <div class="mt-3 mb-3"> <label class="form-label d-block">Reconciliation Scope</label>
-              <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeAll" value="all" checked>
-                  <label class="form-check-label" for="scopeAll">All</label>
-              </div>
-              <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeB2B" value="b2b">
-                  <label class="form-check-label" for="scopeB2B">B2B  Only</label>
-              </div>
-              <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeCDNR" value="cdnr">
-                  <label class="form-check-label" for="scopeCDNR">CDNR Only</label>
-              </div>
-          </div>
+            </div>
 
-              <!-- Submit button -->
-              <div class="col-md-4 text-end">
-                <button type="submit" id="submitButton" class="btn btn-primary">
-                  <span
-                    class="spinner-border spinner-border-sm"
-                    role="status"
-                    aria-hidden="true"
-                    style="display: none"
-                  ></span>
-                  Reconcile Files
-                </button>
-              </div>
+            <!-- Card 4: Submit Button -->
+            <div class="col-md-6 col-lg-3">
+              <div class="card h-100 card-min-height">
+                 <div class="card-body d-flex align-items-center justify-content-center"> 
+                     <button type="submit" id="submitButton" class="btn btn-primary w-100"> 
+                       <span
+                         class="spinner-border spinner-border-sm"
+                         role="status"
+                         aria-hidden="true"
+                         style="display: none"
+                       ></span>
+                       Reconcile
+                     </button>
+                 </div>
+             </div>
+           </div>
             </div>
           </form>
         </div>
