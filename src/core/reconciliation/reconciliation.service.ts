@@ -4,7 +4,7 @@ import { container, inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 import config from '../../config';
 import { LOGGER_TOKEN } from '../../infrastructure/logger';
-import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationResults } from '../common/interfaces/models';
+import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationResults } from '../common/interfaces/models';
 import { IReconciliationService, ReconciliationOptions } from './interfaces/services';
 import { excelSerialDateToJSDate, getCanonicalMonthYear, getFinancialYear, normalizeInvoiceNumber, parseDateString } from './normalization.utils';
 
@@ -121,7 +121,8 @@ export class ReconciliationService implements IReconciliationService {
                 perfectlyMatchedCount: 0,
                 toleranceMatchedCount: 0,
                 missingInPortalCount: 0,
-                missingInLocalCount: 0,
+                missingInLocalCount: 0, //added this
+                mismatchedAmountsCount: 0,
                 totalSuppliersLocal: 0,
                 totalSuppliersPortal: 0,
                 reconciliationTimestamp: new Date(),
@@ -131,6 +132,7 @@ export class ReconciliationService implements IReconciliationService {
                 matches: ReconciliationMatch[];
                 missingInPortal: InternalInvoiceRecord[];
                 missingInLocal: InternalInvoiceRecord[];
+                mismatchedAmounts: ReconciliationMismatch[];
             }>()
         };
 
@@ -158,7 +160,8 @@ export class ReconciliationService implements IReconciliationService {
                 supplierName: supplierName,
                 matches: [],
                 missingInPortal: [],
-                missingInLocal: []
+                missingInLocal: [],
+                mismatchedAmounts: []
             });
             const supplierResults = results.details.get(supplierGstin)!; // Assert non-null as we just set it
 
@@ -220,13 +223,29 @@ export class ReconciliationService implements IReconciliationService {
                                 taxableAmount: !isPerfectTaxable,
                                 taxAmount: !isPerfectTax,
                                 rawInvoiceNumberDiffers: localInv.invoiceNumberRaw !== portalInv.invoiceNumberRaw,
-                                exactDateDiffers: localInv.date.getTime() !== portalInv.date.getTime(),
+                                exactDateDiffers: localInv.date!.getTime() !== portalInv.date!.getTime(),
                             }
                         };
                         supplierResults.matches.push(match);
+                    } else {
+                        // --- Amounts DO NOT Match within Tolerance (It's a Mismatch) ---
+                        matchedLocalRecordIds.add(localInv.id); // Mark both as handled
+                        matchedPortalRecordIds.add(portalInv.id);
 
-                        break; // Found match for localInv, move to the next localInv
+                        const mismatch: ReconciliationMismatch = {
+                            localRecord: localInv,
+                            portalRecord: portalInv,
+                            taxableAmountDifference: parseFloat(taxableAmountDiff.toFixed(2)),
+                            totalTaxDifference: parseFloat(taxAmountDiff.toFixed(2))
+                        };
+                        supplierResults.mismatchedAmounts.push(mismatch);
+                        // Increment a new summary counter if needed (e.g., results.summary.mismatchedCount++)
+                        // --- Increment the mismatch counter ---
+                        results.summary.mismatchedAmountsCount++;
+                        // --------------------------------------
+                
                     }
+                    break; // Found match for localInv, move to the next localInv
                 } // End inner portal invoice loop
             } // End outer local invoice loop
 

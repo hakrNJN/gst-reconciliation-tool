@@ -1,30 +1,108 @@
 /* public/styles.css */
 body {
-    padding-bottom: 60px; /* Add some space at the bottom */
+  padding-bottom: 60px;
 }
 
-.results-box {
-    max-height: 500px;
-    overflow-y: auto;
-    border: 1px solid #dee2e6; /* Match Bootstrap card border */
+#statusArea,
+#exportStatusArea {
+  margin-top: 1rem;
+}
+#resultsTable {
+  width: 100%;
+  table-layout: auto; /* Allow table to adjust column widths based on content */
+  max-height: 100px; /* Set a fixed max height, adjust as needed */
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: auto; /* Enable horizontal scrolling if needed */
 }
 
-#resultsJson {
-    white-space: pre-wrap; /* Wrap long lines in JSON */
-    word-wrap: break-word;
+/* Table cell styling */
+#resultsTable td,
+#resultsTable th {
+  font-size: 0.85rem;
+  padding: 0.5rem;
+  white-space: nowrap; /* Prevent text wrapping by default */
 }
 
-/* Helper class to visually show/hide elements properly */
+/* Apply to columns that should wrap */
+/* #resultsTable .wrap-text {
+  white-space: normal !important;
+} */
+
+
+/* Make export button clearly positioned below table */
+#exportButton {
+  display: block;
+  margin: 20px auto;
+  min-width: 200px;
+}
+
+/* Visually hidden class */
 .visually-hidden {
   position: absolute !important;
-  height: 1px; width: 1px;
+  height: 1px;
+  width: 1px;
   overflow: hidden;
-  clip: rect(1px 1px 1px 1px); /* IE6, IE7 */
+  clip: rect(1px 1px 1px 1px);
   clip: rect(1px, 1px, 1px, 1px);
-  white-space: nowrap; /* Required for accessibility */
+  white-space: nowrap;
 }
 
-/* Add some margin to status alerts */
-#statusArea, #exportStatusArea {
-    margin-top: 1rem;
+/* Override for making sections visible */
+section:not(.visually-hidden),
+#noResultsMessage:not(.visually-hidden) {
+  /* Apply generic visibility overrides */
+  position: static !important;
+  height: auto;
+  width: auto;
+  overflow: visible; /* OK for general sections/messages */
+  clip: auto;
+  white-space: normal;
+}
+
+/* Specific override for the table container to allow its overflow rules to work */
+#resultsTableContainer:not(.visually-hidden) {
+  position: static !important;
+  height: auto; /* Allow height to be controlled by max-height */
+  width: auto; /* Allow width to be controlled by container/bootstrap */
+  overflow: inherit; /* Let the .table-responsive style handle overflow */
+  /* OR simply rely on .table-responsive styles and don't set overflow here */
+  clip: auto;
+  white-space: normal;
+}
+
+/* --- Keep your other styles --- */
+
+/* Table container styling (This is where overflow is set correctly) */
+.table-responsive {
+  max-height: 400px; /* Set a fixed max height */
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: auto; /* Enable horizontal scrolling if needed */
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+/* Table styling */
+#resultsTable {
+  width: 100%;
+  table-layout: auto;
+}
+#resultsTable td,
+#resultsTable th {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.wrap-text {
+  white-space: normal !important;
+}
+
+/* Override for making sections visible */
+section:not(.visually-hidden),
+#resultsTableContainer:not(.visually-hidden),
+#noResultsMessage:not(.visually-hidden) {
+  position: static !important;
+  height: auto;
+  width: auto;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
 }

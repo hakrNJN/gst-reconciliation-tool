@@ -17,7 +17,7 @@ export interface InternalInvoiceRecord {
     /** Normalized invoice number used for matching */
     invoiceNumberNormalized: string; // (will be set later)
     /** Invoice date */
-    date: Date; 
+    date: Date | null;
     /** Canonical representation of month and year (e.g., "YYYY-MM") */
     dateMonthYear: string;  //(will be set later)
     /** Taxable value (value before tax) */
@@ -70,6 +70,14 @@ export interface ReconciliationMatch {
     };
 }
 
+/** Represents a pair where Date/Inv# matched but amounts differed beyond tolerance */
+export interface ReconciliationMismatch {
+    readonly localRecord: Readonly<InternalInvoiceRecord>;
+    readonly portalRecord: Readonly<InternalInvoiceRecord>;
+    readonly taxableAmountDifference: number;
+    readonly totalTaxDifference: number;
+}
+
 /**
  * Structure holding the overall results of the reconciliation process.
  */
@@ -82,6 +90,7 @@ export interface ReconciliationResults {
         toleranceMatchedCount: number;
         missingInPortalCount: number; // Count of local records not found in portal
         missingInLocalCount: number;  // Count of portal records not found in local
+        mismatchedAmountsCount: number; // Count of records with mismatched amounts
         totalSuppliersLocal: number;
         totalSuppliersPortal: number;
         reconciliationTimestamp: Date;
@@ -92,5 +101,6 @@ export interface ReconciliationResults {
         matches: ReconciliationMatch[];
         missingInPortal: InternalInvoiceRecord[]; // Local records not matched
         missingInLocal: InternalInvoiceRecord[];  // Portal records not matched
+        mismatchedAmounts: ReconciliationMismatch[];
     }>;
 }

@@ -34,13 +34,16 @@ export class ReportGeneratorService implements IReportGeneratorService {
         options?: ReportOptions // Options currently not used, but available
     ): Promise<Buffer> {
         this.logger.info('Generating reconciliation Excel report...');
-
+        if (!(results.summary.reconciliationTimestamp instanceof Date)) {
+            results.summary.reconciliationTimestamp = new Date(results.summary.reconciliationTimestamp);
+        }
         try {
             const workbook = new ExcelJS.Workbook();
             this.setWorkbookProperties(workbook, results.summary.reconciliationTimestamp);
-
             this.createSummarySheet(workbook, results.summary);
-            this.createMatchedDetailsSheet(workbook, results.details);
+            this.createPerfectlyMatchedSheet(workbook, results.details);
+            this.createToleranceMatchedSheet(workbook, results.details);
+            this.createMismatchedAmountSheet(workbook, results.details); 
             this.createMissingInPortalSheet(workbook, results.details);
             this.createMissingInLocalSheet(workbook, results.details);
 
@@ -55,13 +58,15 @@ export class ReportGeneratorService implements IReportGeneratorService {
         }
     }
 
-    private setWorkbookProperties(workbook: Workbook, timestamp: Date): void {
+    private setWorkbookProperties(workbook: Workbook, timestamp: Date | string): void {
         workbook.creator = 'GST Reconciliation Tool';
         workbook.lastModifiedBy = 'GST Reconciliation Tool';
-        workbook.created = timestamp;
+        
+        // Ensure timestamp is a Date object
+        const created = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+        workbook.created = created;
         workbook.modified = new Date();
         workbook.lastPrinted = new Date();
-        // Add company info or other properties if needed
     }
 
     // --- Sheet Creation Methods ---
@@ -82,6 +87,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         sheet.addRow([]); // Spacer row
         this.addSummaryRow(sheet, 'Perfectly Matched Records:', summary.perfectlyMatchedCount);
         this.addSummaryRow(sheet, 'Matched within Tolerance:', summary.toleranceMatchedCount);
+        this.addSummaryRow(sheet, 'Mismatch in Portal vs Book:', summary.mismatchedAmountsCount);
         this.addSummaryRow(sheet, 'Missing in Portal (GSTR-2B):', summary.missingInPortalCount);
         this.addSummaryRow(sheet, 'Missing in Local Books:', summary.missingInLocalCount);
 
@@ -119,9 +125,11 @@ export class ReportGeneratorService implements IReportGeneratorService {
             // Differences / Tolerance
             'Taxable Diff', 'Tax Diff', 'Tolerance Notes'
         ];
-        const headerRow = sheet.addRow(headers);
-        headerRow.font = { bold: true };
-        sheet.views = [{ state: 'frozen', ySplit: 1 }]; // Freeze header row
+        // const headerRow = sheet.addRow(headers);
+        // headerRow.font = { bold: true };
+        // sheet.views = [{ state: 'frozen', ySplit: 1 }]; // Freeze header row
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
         // Add data rows
         details.forEach((supplierData, gstin) => {
@@ -157,15 +165,97 @@ export class ReportGeneratorService implements IReportGeneratorService {
         this.autoFitColumns(sheet, headers);
     }
 
+    private createPerfectlyMatchedSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
+        const sheet = workbook.addWorksheet('Perfectly Matched');
+        const headers = ['Supplier GSTIN', 'Supplier Name', 'Inv No', 'Date', 'Taxable Amt', 'Total Tax', 'Inv Value'];
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+        details.forEach((supplierData, gstin) => {
+            supplierData.matches
+                .filter(match => match.status === 'MatchedPerfectly')
+                .forEach(match=> {
+                    // Use local or portal record - should be identical for perfectly matched
+                    const record = match.localRecord;
+                     
+                    const row = sheet.addRow([
+                        gstin, supplierData.supplierName ?? '', record.invoiceNumberRaw, record.date,
+                        record.taxableAmount, record.totalTax, record.invoiceValue
+                    ]);
+                    this.formatDataRow(row, [4], [5, 6, 7]); // Date Col 4, Currency Cols 5,6,7
+                });
+        });
+        this.autoFitColumns(sheet, headers);
+    }
+
+    private createToleranceMatchedSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
+        const sheet = workbook.addWorksheet('Matched (Tolerance)');
+        const headers = [
+            'Supplier GSTIN', 'Supplier Name',
+            'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
+            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
+            'Taxable Diff', 'Tax Diff', 'Tolerance Notes'
+        ];
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+
+        details.forEach((supplierData, gstin) => {
+            supplierData.matches
+                .filter(match => match.status === 'MatchedWithTolerance')
+                .forEach(match => {
+                    const toleranceNotes = this.formatToleranceNotes(match);
+                    const taxableDiff = match.localRecord.taxableAmount - match.portalRecord.taxableAmount;
+                    const taxDiff = match.localRecord.totalTax - match.portalRecord.totalTax;
+
+                    const row = sheet.addRow([
+                        gstin, supplierData.supplierName ?? '',
+                        match.localRecord.invoiceNumberRaw, match.localRecord.date, match.localRecord.taxableAmount, match.localRecord.totalTax, match.localRecord.invoiceValue,
+                        match.portalRecord.invoiceNumberRaw, match.portalRecord.date, match.portalRecord.taxableAmount, match.portalRecord.totalTax, match.portalRecord.invoiceValue,
+                        taxableDiff, taxDiff, toleranceNotes
+                    ]);
+                    // Date cols 4, 9. Currency cols 5,6,7, 10,11,12, 13,14
+                    this.formatDataRow(row, [4, 9], [5, 6, 7, 10, 11, 12, 13, 14]);
+                });
+        });
+        this.autoFitColumns(sheet, headers);
+    }
+
+    private createMismatchedAmountSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
+        const sheet = workbook.addWorksheet('Mismatched Amounts');
+        const headers = [
+            'Supplier GSTIN', 'Supplier Name',
+            'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
+            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
+            'Taxable Diff', 'Tax Diff'
+        ];
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+
+        details.forEach((supplierData, gstin) => {
+            supplierData.mismatchedAmounts?.forEach(mismatch => {
+                const taxableDiff = mismatch.localRecord.taxableAmount - mismatch.portalRecord.taxableAmount;
+                const taxDiff = mismatch.localRecord.totalTax - mismatch.portalRecord.totalTax;
+                const row = sheet.addRow([ gstin, supplierData.supplierName ?? '',
+                    mismatch.localRecord.invoiceNumberRaw, mismatch.localRecord.date, mismatch.localRecord.taxableAmount, mismatch.localRecord.totalTax, mismatch.localRecord.invoiceValue,
+                    mismatch.portalRecord.invoiceNumberRaw, mismatch.portalRecord.date, mismatch.portalRecord.taxableAmount, mismatch.portalRecord.totalTax, mismatch.portalRecord.invoiceValue,
+                    taxableDiff, taxDiff]);
+                this.formatDataRow(row, [4, 9], [5, 6, 7, 10, 11, 12, 13, 14]);
+            });
+        });;
+        this.autoFitColumns(sheet, headers);
+    }
+
     private createMissingInPortalSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
         const sheet = workbook.addWorksheet('Missing in Portal (GSTR-2B)');
         const headers = [
             'Supplier GSTIN', 'Supplier Name', 'Local Inv No', 'Local Date',
             'Local Taxable Amt', 'Local Total Tax', 'Local Inv Value'
         ];
-        const headerRow = sheet.addRow(headers);
-        headerRow.font = { bold: true };
-        sheet.views = [{ state: 'frozen', ySplit: 1 }]; // Freeze header row
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
 
         details.forEach((supplierData, gstin) => {
             supplierData.missingInPortal.forEach(record => {
@@ -192,9 +282,9 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Supplier GSTIN', 'Supplier Name', 'Portal Inv No', 'Portal Date',
             'Portal Taxable Amt', 'Portal Total Tax', 'Portal Inv Value'
         ];
-        const headerRow = sheet.addRow(headers);
-        headerRow.font = { bold: true };
-        sheet.views = [{ state: 'frozen', ySplit: 1 }]; // Freeze header row
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
 
         details.forEach((supplierData, gstin) => {
             supplierData.missingInLocal.forEach(record => {
@@ -216,7 +306,11 @@ export class ReportGeneratorService implements IReportGeneratorService {
     }
 
     // --- Helper Methods ---
-
+    private styleHeaderRow(row: Row): void { // Extracted helper
+        row.font = { bold: true };
+        row.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        // Add fill/border if desired
+    }
     /** Applies standard date and currency formats to cells in a row */
     private formatDataRow(row: Row, dateColIndices: number[], currencyColIndices: number[]): void {
         dateColIndices.forEach(idx => {
@@ -227,30 +321,49 @@ export class ReportGeneratorService implements IReportGeneratorService {
         });
     }
 
-    /** Auto-fits column widths based on header and some sample data */
-    private autoFitColumns(sheet: Worksheet, headers: string[]): void {
-        sheet.columns.forEach((column, i) => {
-            if (column && column !== undefined) {
-                let maxLength = headers[i]?.length ?? 10;
-                // Limit scan for performance (e.g., header + first 20 data rows)
-                const scanRowCount = 21;
-                column.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
-                    // Only check up to scanRowCount rows
-                    if (rowNumber <= scanRowCount) {
-                        const columnLength = cell.value ? cell.value.toString().length : 0;
-                        if (columnLength > maxLength) {
-                            maxLength = columnLength;
+   /** Auto-fits column widths based on header and some sample data */
+private autoFitColumns(sheet: Worksheet, headers: string[]): void {
+    sheet.columns.forEach((column, i) => {
+        if (column) {
+            let maxLength = headers[i]?.length ?? 10;
+            const scanRowCount = 21;
+
+            try {
+                // Type guard to ensure column has eachCell method
+                if (typeof column.eachCell === 'function') {
+                    column.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
+                        if (rowNumber <= scanRowCount) {
+                            const cellValue = cell.value;
+                            const columnLength = cellValue !== null && cellValue !== undefined
+                                ? cellValue.toString().length
+                                : 0;
+                            if (columnLength > maxLength) {
+                                maxLength = columnLength;
+                            }
                         }
+                    });
+                    
+                    // Set width after making sure column is valid
+                    column.width = Math.max(12, maxLength + 4);
+                } else {
+                    this.logger.warn(`Column at index ${i} doesn't have expected eachCell method`);
+                    // Fallback if eachCell is not available
+                    if ('width' in column) {
+                        column.width = Math.max(12, maxLength + 4);
                     }
-                });
-                // Add padding, ensure minimum width
-                column.width = Math.max(12, maxLength + 4);
-            } else {
-                // Optionally log if a column is unexpectedly undefined
-                this.logger.warn(`Column at index ${i} was unexpectedly undefined during autoFit.`);
+                }
+            } catch (cellError) {
+                this.logger.error(`Error processing cells for column index ${i} during autoFit`, cellError);
+                // Fallback width if cell processing fails
+                if ('width' in column) {
+                    column.width = Math.max(12, maxLength + 4);
+                }
             }
-        });
-    }
+        } else {
+            this.logger.warn(`Column at index ${i} was unexpectedly undefined during autoFit.`);
+        }
+    });
+}
 
     /** Formats tolerance details into a readable string */
     private formatToleranceNotes(match: ReconciliationMatch): string {
@@ -261,6 +374,8 @@ export class ReportGeneratorService implements IReportGeneratorService {
         if (match.toleranceDetails.exactDateDiffers) notes.push('Date Differs');
         return notes.join('; ');
     }
+
+
 }
 
 // --- DI Registration ---

@@ -1,84 +1,277 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GST Reconciliation Tool - Test Client</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <!-- <style>
+      body {
+        padding-bottom: 60px;
+      }
+
+      #statusArea,
+      #exportStatusArea {
+        margin-top: 1rem;
+      }
+
+      /* Make table text smaller and wrap */
+      #resultsTable td,
+      #resultsTable th {
+        font-size: 0.85rem;
+        white-space: nowrap; /* Prevent wrapping initially */
+      }
+      /* Allow specific columns to wrap if needed by adding a class in JS */
+      .wrap-text {
+        white-space: normal !important;
+      }
+
+      /* Table container styling */
+      .table-responsive {
+        max-height: 400px; /* Set a fixed max height */
+        overflow-y: auto; /* Enable vertical scrolling */
+        overflow-x: auto; /* Enable horizontal scrolling if needed */
+        width: 100%; /* Take full width of parent container */
+        margin-bottom: 20px; /* Space below table */
+      }
+
+      /* Make table use full width of container */
+      #resultsTable {
+        width: 100%;
+        table-layout: auto; /* Allow table to adjust column widths based on content */
+      }
+
+      /* Make export button clearly positioned below table */
+      #exportButton {
+        display: block; /* Force button to take its own line */
+        margin-top: 20px;
+        margin-bottom: 30px;
+      }
+
+      /* Visually hidden class */
+      .visually-hidden {
+        position: absolute !important;
+        height: 1px;
+        width: 1px;
+        overflow: hidden;
+        clip: rect(1px 1px 1px 1px);
+        clip: rect(1px, 1px, 1px, 1px);
+        white-space: nowrap;
+      }
+
+      /* Override for making sections visible */
+      section:not(.visually-hidden),
+      #resultsTableContainer:not(.visually-hidden),
+      #noResultsMessage:not(.visually-hidden) {
+        position: static !important;
+        height: auto;
+        width: auto;
+        overflow: visible;
+        clip: auto;
+        white-space: normal;
+      }
+    </style> -->
+  </head>
+  <body>
     <div class="container mt-4">
-        <header class="mb-4">
-            <h1>GST Reconciliation Tool</h1>
-            <p class="lead">Phase 1 Test Client (Surat, Gujarat - April 9, 2025)</p>
-        </header>
+      <header class="mb-4">
+        <h1>GST Reconciliation Tool</h1>
+        <p class="lead">
+          Phase 1 Test Client (Surat, Gujarat - April 11, 2025)
+        </p>
+      </header>
 
-        <section id="upload-section" class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">Upload Files & Options</h5>
-                <form id="reconcileForm">
-                    <div class="mb-3">
-                        <label for="localFile" class="form-label">1. Local Purchase Data (Excel/JSON)</label>
-                        <input class="form-control" type="file" id="localFile" name="localData" accept=".xlsx,.xls,.json" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="portalFile" class="form-label">2. Portal Data / GSTR-2B (Excel/JSON)</label>
-                        <input class="form-control" type="file" id="portalFile" name="portalData" accept=".xlsx,.xls,.json" required>
-                    </div>
-
-                    <hr>
-                    <h6>Reconciliation Options</h6>
-                    <div class="row g-3 mb-3">
-                         <div class="col-md-6">
-                             <label for="toleranceAmount" class="form-label">Taxable Amount Tolerance (+/-)</label>
-                             <input type="number" class="form-control" id="toleranceAmount" name="toleranceAmount" value="5.00" step="0.01" required>
-                         </div>
-                         <div class="col-md-6">
-                             <label for="toleranceTax" class="form-label">Total Tax Tolerance (+/-)</label>
-                             <input type="number" class="form-control" id="toleranceTax" name="toleranceTax" value="1.00" step="0.01" required>
-                         </div>
-                    </div>
-                     <div class="mb-3">
-                         <label class="form-label d-block">Invoice Date Matching</label>
-                         <div class="form-check form-check-inline">
-                             <input class="form-check-input" type="radio" name="dateMatchStrategy" id="dateMatchMonth" value="month" checked>
-                             <label class="form-check-label" for="dateMatchMonth">This Month</label>
-                         </div>
-                         <div class="form-check form-check-inline">
-                             <input class="form-check-input" type="radio" name="dateMatchStrategy" id="dateMatchFY" value="fy">
-                             <label class="form-check-label" for="dateMatchFY">This Financial Year</label>
-                         </div>
-                     </div>
-
-                    <button type="submit" id="submitButton" class="btn btn-primary">
-                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
-                        Reconcile Files
-                    </button>
-                </form>
+      <section id="upload-section" class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">Upload Files & Options</h5>
+          <form id="reconcileForm">
+            <!-- 1. File upload options side by side -->
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="localFile" class="form-label"
+                  >1. Local Purchase Data (Excel/JSON)</label
+                >
+                <input
+                  class="form-control"
+                  type="file"
+                  id="localFile"
+                  name="localData"
+                  accept=".xlsx,.xls,.json"
+                  required
+                />
+              </div>
+              <div class="col-md-6">
+                <label for="portalFile" class="form-label"
+                  >2. Portal Data / GSTR-2B (Excel/JSON)</label
+                >
+                <input
+                  class="form-control"
+                  type="file"
+                  id="portalFile"
+                  name="portalData"
+                  accept=".xlsx,.xls,.json"
+                  required
+                />
+              </div>
             </div>
-        </section>
 
-        <section id="status-section" class="mb-4">
-             <div id="statusArea" role="alert" class="visually-hidden"></div>
-        </section>
+            <hr />
 
-        <section id="results-section">
-            <h5>Results</h5>
-            <div id="resultsArea" class="results-box bg-light p-3 rounded">
-                <p class="text-muted">Results will appear here after reconciliation.</p>
-                <pre><code id="resultsJson"></code></pre>
+            <!-- 2. Reconciliation options horizontally stacked -->
+            <div class="row align-items-end g-3">
+              <!-- Tolerance options -->
+              <div class="col-md-4">
+                <h6>Reconciliation Options</h6>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label for="toleranceAmount" class="form-label"
+                      >Taxable Amount Tolerance</label
+                    >
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="toleranceAmount"
+                      name="toleranceAmount"
+                      value="5.00"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                  <div class="col-6">
+                    <label for="toleranceTax" class="form-label"
+                      >Tax Tolerance</label
+                    >
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="toleranceTax"
+                      name="toleranceTax"
+                      value="1.00"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Date matching options -->
+              <div class="col-md-4">
+                <label class="form-label d-block">Invoice Date Matching</label>
+                <div class="form-check form-check-inline">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="dateMatchStrategy"
+                    id="dateMatchMonth"
+                    value="month"
+                    checked
+                  />
+                  <label class="form-check-label" for="dateMatchMonth"
+                    >This Month</label
+                  >
+                </div>
+                <div class="form-check form-check-inline">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="dateMatchStrategy"
+                    id="dateMatchFY"
+                    value="fy"
+                  />
+                  <label class="form-check-label" for="dateMatchFY"
+                    >This Financial Year</label
+                  >
+                </div>
+              </div>
+
+              <!-- Submit button -->
+              <div class="col-md-4 text-end">
+                <button type="submit" id="submitButton" class="btn btn-primary">
+                  <span
+                    class="spinner-border spinner-border-sm"
+                    role="status"
+                    aria-hidden="true"
+                    style="display: none"
+                  ></span>
+                  Reconcile Files
+                </button>
+              </div>
             </div>
-            <button id="exportButton" class="btn btn-success mt-3" style="display: none;">
-                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
-                Export Results (Excel)
-            </button>
-             <div id="exportStatusArea" class="mt-2 visually-hidden" role="alert"></div>
-        </section>
+          </form>
+        </div>
+      </section>
 
+      <section id="status-section" class="mb-4">
+        <div id="statusArea" role="alert" class="visually-hidden"></div>
+      </section>
+
+      <!-- Update the results section to properly position and style the export button -->
+      <section id="results-section" class="visually-hidden">
+        <hr />
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">Reconciliation Results</h5>
+          <button
+            id="exportButton"
+            class="btn btn-success"
+            style="display: none"
+          >
+            <span
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+              style="display: none"
+            ></span>
+            Export Full Results (Excel)
+          </button>
+        </div>
+
+        <div class="mb-3">
+          <label for="resultsCategorySelect" class="form-label"
+            >View Results For:</label
+          >
+          <select class="form-select" id="resultsCategorySelect">
+            <option selected disabled value="">-- Select Category --</option>
+            <option value="perfect">Perfectly Matched Records</option>
+            <option value="tolerance">Matched with Tolerance</option>
+            <option value="mismatch">Mismatched Amounts</option>
+            <option value="missingPortal">Missing in Portal (GSTR-2B)</option>
+            <option value="missingLocal">Missing in Local Books</option>
+          </select>
+        </div>
+
+        <div
+          id="resultsTableContainer"
+          class="table-responsive visually-hidden"
+        >
+          <p><strong id="tableCaption"></strong></p>
+          <table
+            id="resultsTable"
+            class="table table-striped table-bordered table-hover table-sm"
+          >
+            <thead id="resultsTableHead"></thead>
+            <tbody id="resultsTableBody"></tbody>
+          </table>
+        </div>
+        <p id="noResultsMessage" class="text-muted" style="display: none"></p>
+
+        <div
+          id="exportStatusArea"
+          class="mt-2 visually-hidden"
+          role="alert"
+        ></div>
+      </section>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
     <script src="main.js" defer></script>
-</body>
+  </body>
 </html>

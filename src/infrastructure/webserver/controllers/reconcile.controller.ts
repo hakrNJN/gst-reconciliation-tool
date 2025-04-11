@@ -5,7 +5,7 @@ import { container, inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 import config from '../../../config';
 import { ValidationError } from '../../../core/common/errors';
-import { InternalInvoiceRecord, ReconciliationResults } from '../../../core/common/interfaces/models';
+import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationResults } from '../../../core/common/interfaces/models';
 import { FileParserService } from '../../../core/parsing'; // Import concrete class for DI token or use interface token
 import { ReconciliationOptions, ReconciliationService } from '../../../core/reconciliation'; // Import concrete class
 import { ReportGeneratorService } from '../../../core/reporting'; // Import concrete class
@@ -129,55 +129,6 @@ export class ReconcileController {
      * Handles request to export reconciliation results as Excel.
      * (Assumes results might be passed or retrieved via an ID - simplified for now)
      */
-    // public handleExport = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    //     this.logger.info('Received request to export reconciliation results.');
-    //     try {
-    //         // --- How to get results data for export? ---
-    //         // Option 1: Client POSTs the results JSON back (simple, but potentially large payload)
-    //         // Option 2: Use a jobId from async processing (requires job store)
-    //         // Option 3: Perform reconciliation again (inefficient)
-    //         // For now, let's assume Option 1: results are in req.body
-    //         const results = req.body; // Requires body-parser middleware and client sending data
-
-    //         if (!results || !results.summary || !results.details) {
-    //             throw new ValidationError('Reconciliation results data is required in the request body for export.');
-    //         }
-    //         // Convert Map-like structure back to Map if needed after JSON parsing
-    //         if (!(results.details instanceof Map)) {
-    //             try {
-    //                 // Attempt conversion if it looks like an array of [key, value] pairs or an object
-    //                 if (Array.isArray(results.details)) {
-    //                     results.details = new Map(results.details);
-    //                 } else if (typeof results.details === 'object' && results.details !== null) {
-    //                     results.details = new Map(Object.entries(results.details));
-    //                 } else {
-    //                     throw new Error('Invalid format for details property');
-    //                 }
-    //             } catch (convError) {
-    //                 this.logger.error('Failed to convert results.details back to Map', convError);
-    //                 throw new ValidationError('Invalid format for results details in request body.');
-    //             }
-    //         }
-
-
-    //         // Generate Excel Report
-    //         const reportBuffer = await this.reporter.generateReport(results);
-
-    //         // Set Headers for Excel download
-    //         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    //         const filename = `reconciliation-report-${timestamp}.xlsx`;
-    //         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    //         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-
-    //         // Send Buffer
-    //         res.send(reportBuffer);
-    //         this.logger.info(`Exported report ${filename}`);
-
-    //     } catch (error) {
-    //         this.logger.error('Error during report export handling.', error);
-    //         next(error); // Pass error to the centralized error handler
-    //     }
-    // };
     public handleExport = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         this.logger.info('Received request to export reconciliation results.');
         try {
@@ -188,7 +139,7 @@ export class ReconcileController {
             }
 
             // --- Convert details back to Map ---
-            let detailsMap: Map<string, any>;
+            let detailsMap: Map<string, any>; // Use 'any' temporarily before casting record types
             try {
                 detailsMap = new Map(Object.entries(resultsInput.details));
             } catch (convError) {
@@ -196,41 +147,87 @@ export class ReconcileController {
                 throw new ValidationError('Invalid format for results details in request body.');
             }
 
-            // --- Convert Date Strings back to Date Objects ---
-            this.logger.info('Converting date strings in results back to Date objects for export...');
-            for (const supplierData of detailsMap.values()) {
-                // Helper function to parse date strings safely
-                const parseDate = (record: any, field: string = 'date') => {
-                    if (record && typeof record[field] === 'string') {
-                        const dateObj = new Date(record[field]); // ISO strings are parsed reliably by new Date()
-                        if (!isNaN(dateObj.getTime())) {
-                            record[field] = dateObj; // Replace string with Date object
-                        } else {
-                            this.logger.warn(`Could not re-parse date string "${record[field]}" for export. Leaving as string or nulling?`);
-                            // Decide how to handle invalid dates during export - maybe nullify?
-                            // record[field] = null;
-                        }
-                    } else if (record && !(record[field] instanceof Date)) {
-                        // If it's somehow not a string or Date, log warning
-                        this.logger.warn(`Unexpected type for date field "${field}" during export pre-processing: ${typeof record[field]}`);
+            // --- Sanitize Date Fields IN-PLACE before reporting ---
+            this.logger.debug('Sanitizing date fields in results for export...');
+            let dateProcessingErrorOccurred = false; // Flag to track issues
+            for (const [gstin, supplierData] of detailsMap.entries()) {
+                // Helper to sanitize the 'date' field of a record
+                const sanitizeDate = (record: Partial<InternalInvoiceRecord>, context: string) => {
+
+                    const field = 'date';
+                    if (!record || record[field] === undefined || record[field] === null) {
+                        record.date = null; // Ensure null if missing
+                        return;
                     }
+                    const originalValue = record[field];
+                    const originalType = typeof originalValue;
+                    // let finalDateValue: Date | null = null;
+
+                    let dateObj: Date | null = null;
+
+                    try { // Add try-catch around date operations
+                        if (originalValue instanceof Date) {
+                            if (!isNaN(originalValue.getTime())) {
+                                dateObj = originalValue; // Already a valid Date
+                                this.logger.debug(`[${context}] Kept existing valid Date object for record ${record.id}`);
+                            } else {
+                                this.logger.warn(`[${context}] Found 'Invalid Date' object for record ${record.id}. Setting to null.`);
+                            }
+                        } else if (typeof originalValue === 'string') {
+                            const parsed = new Date(originalValue); // Try parsing the string (ISO expected)
+                            if (!isNaN(parsed.getTime())) {
+                                dateObj = parsed; // Parsed successfully
+                                this.logger.debug(`[${context}] Parsed date string "${originalValue}" to Date object for record ${record.id}`);
+                            } else {
+                                this.logger.warn(`[${context}] Could not re-parse date string "${originalValue}" for record ${record.id}. Setting to null.`);
+                            }
+                        } else {
+                            // Handle other unexpected types
+                            this.logger.warn(`[${context}] Unexpected type "${originalType}" for date field on record ${record.id}. Value: ${originalValue}. Setting to null.`);
+                        }
+                    } catch (parseError) {
+                        this.logger.error(`[${context}] Error during date processing for record ${record.id}. Value: ${originalValue}`, parseError);
+                        dateProcessingErrorOccurred = true;
+                    }
+
+                    // Replace original with valid Date object or null
+                    record.date = dateObj;
+
                 };
-
-                supplierData.matches?.forEach((match: any) => {
-                    parseDate(match.localRecord, 'date');
-                    parseDate(match.portalRecord, 'date');
+                // Apply sanitization
+                const contextPrefix = `GSTIN ${gstin}`;
+                (supplierData.matches as ReconciliationMatch[] | undefined)?.forEach((match, i) => {
+                    sanitizeDate(match.localRecord as InternalInvoiceRecord, `${contextPrefix}-Match[${i}]-Local`);
+                    sanitizeDate(match.portalRecord as InternalInvoiceRecord, `${contextPrefix}-Match[${i}]-Portal`);
                 });
-                supplierData.missingInPortal?.forEach((record: any) => parseDate(record, 'date'));
-                supplierData.missingInLocal?.forEach((record: any) => parseDate(record, 'date'));
+                (supplierData.missingInPortal as InternalInvoiceRecord[] | undefined)?.forEach((record, i) => sanitizeDate(record, `${contextPrefix}-MissingPortal[${i}]`));
+                (supplierData.missingInLocal as InternalInvoiceRecord[] | undefined)?.forEach((record, i) => sanitizeDate(record, `${contextPrefix}-MissingLocal[${i}]`));
+                (supplierData.mismatchedAmounts as any[] | undefined)?.forEach((mismatch, i) => { // Use any temporarily if ReconciliationMismatch type not updated fully
+                    sanitizeDate(mismatch.localRecord as InternalInvoiceRecord, `${contextPrefix}-Mismatch[${i}]-Local`);
+                    sanitizeDate(mismatch.portalRecord as InternalInvoiceRecord, `${contextPrefix}-Mismatch[${i}]-Portal`);
+                });
+
             }
-            this.logger.debug('Date conversion for export complete.');
-            // --- End Date Conversion ---
+            if (dateProcessingErrorOccurred) {
+                this.logger.error("Errors occurred during date sanitization for export. Report data might be incomplete or invalid.");
+                // Optionally throw an error here if desired:
+                // throw new AppError('ExportPrepError', 'Failed to prepare date fields for export.', 500);
+            } else {
+                this.logger.debug('Date sanitization for export complete.');
+            }
+            // --- End Date Sanitization ---
 
 
-            // Reconstruct the ReconciliationResults object with the Map containing Date objects
+            // Reconstruct the ReconciliationResults object, NOW types should be closer
             const resultsForReport: ReconciliationResults = {
                 summary: resultsInput.summary,
-                details: detailsMap // Now contains Date objects where possible
+                details: detailsMap as Map<string, { // Cast the value type more specifically if possible
+                    supplierName?: string;
+                    matches: ReconciliationMatch[];
+                    missingInPortal: InternalInvoiceRecord[];
+                    missingInLocal: InternalInvoiceRecord[];
+                    mismatchedAmounts: ReconciliationMismatch[]; // Adjust type if needed
+                }>
             };
 
             // Generate Excel Report
@@ -248,7 +245,7 @@ export class ReconcileController {
             this.logger.error('Error during report export handling.', error);
             next(error);
         }
-    };
+    }
 
     // Add handleGetStatus, handleGetResults methods here if implementing async processing later
 
