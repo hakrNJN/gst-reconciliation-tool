@@ -5,10 +5,11 @@ import { container, inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 import config from '../../../config';
 import { ValidationError } from '../../../core/common/errors';
-import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationResults } from '../../../core/common/interfaces/models';
+import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationPotentialMatch, ReconciliationResults } from '../../../core/common/interfaces/models';
 import { FileParserService } from '../../../core/parsing'; // Import concrete class for DI token or use interface token
 import { ReconciliationOptions, ReconciliationService } from '../../../core/reconciliation'; // Import concrete class
 import { ReportGeneratorService } from '../../../core/reporting'; // Import concrete class
+import { ValidationService } from '../../../core/validation';
 import { LOGGER_TOKEN } from '../../logger';
 
 
@@ -25,11 +26,10 @@ export class ReconcileController {
     // Inject dependencies using tsyringe
     constructor(
         @inject(LOGGER_TOKEN) private logger: Logger,
-        // Using concrete classes as tokens for simplicity, or use interface tokens
         @inject(FileParserService) private fileParser: FileParserService,
+        @inject(ValidationService) private validationService: ValidationService, // Inject new service
         @inject(ReconciliationService) private reconciler: ReconciliationService,
         @inject(ReportGeneratorService) private reporter: ReportGeneratorService
-        // TODO: Inject Validation/Standardization Service once created
     ) {
         this.logger.info('ReconcileController initialized.');
     }
@@ -48,12 +48,17 @@ export class ReconcileController {
             }
             const localFile = files.localData[0];
             const portalFile = files.portalData[0];
+
             this.logger.info(`Processing local file: ${localFile.originalname} (${(localFile.size / 1024).toFixed(2)} KB)`);
             this.logger.info(`Processing portal file: ${portalFile.originalname} (${(portalFile.size / 1024).toFixed(2)} KB)`);
 
             // --- 1b. Extract and Validate Options from req.body ---
             // Non-file fields from FormData are typically available in req.body
-            const { toleranceAmount: rawToleranceAmount, toleranceTax: rawToleranceTax, dateMatchStrategy: rawDateStrategy } = req.body;
+            const { toleranceAmount: rawToleranceAmount,
+                toleranceTax: rawToleranceTax,
+                dateMatchStrategy: rawDateStrategy,
+                reconciliationScope: rawScope
+            } = req.body;
 
             // Validate and parse tolerances, using config defaults if invalid/missing
             const toleranceAmount = parseFloat(rawToleranceAmount);
@@ -70,11 +75,16 @@ export class ReconcileController {
             const effectiveDateStrategy: 'month' | 'fy' = (rawDateStrategy === 'fy' || rawDateStrategy === 'month')
                 ? rawDateStrategy
                 : 'month';
+            
+            const effectiveScope: 'all' | 'b2b' | 'cdnr' = (rawScope === 'b2b' || rawScope === 'cdnr')
+                ? rawScope
+                : 'all'; // Default to 'all'
 
             const options: ReconciliationOptions = {
                 toleranceAmount: effectiveToleranceAmount,
                 toleranceTax: effectiveToleranceTax,
-                dateMatchStrategy: effectiveDateStrategy
+                dateMatchStrategy: effectiveDateStrategy,
+                reconciliationScope: effectiveScope 
             };
             this.logger.info('Using reconciliation options:', options);
             // -------------------------------------------------------
@@ -96,12 +106,22 @@ export class ReconcileController {
             this.logger.info(`Parsed portal records: ${portalRawRecords.length}`);
 
 
-            // 3. TODO: Validation & Standardization Step
-            // Once the ValidationService is created, call it here:
-            // const { validLocalRecords, validPortalRecords } = await this.validationService.validateAndStandardize(localRawRecords, portalRawRecords);
-            // For now, we assume the parser output is usable directly by the reconciler (which does temp standardization)
-            const localRecords = localRawRecords as InternalInvoiceRecord[]; // Temporary cast
-            const portalRecords = portalRawRecords as InternalInvoiceRecord[]; // Temporary cast
+            // 3. Validation & Standardization
+           // --- Validation & Standardization Step ---
+           this.logger.info('Validating and standardizing records...');
+           // Process in parallel
+            const [localValidatedPromise, portalValidatedPromise] = await Promise.allSettled([
+                 this.validationService.validateAndStandardize(localRawRecords, 'local'),
+                 this.validationService.validateAndStandardize(portalRawRecords, 'portal')
+            ]);
+            if (localValidatedPromise.status === 'rejected') throw localValidatedPromise.reason; // Or handle more gracefully
+            if (portalValidatedPromise.status === 'rejected') throw portalValidatedPromise.reason;
+
+           const localRecords = localValidatedPromise.value;
+           const portalRecords = portalValidatedPromise.value;
+           this.logger.info(`Validated records - Local: ${localRecords.length}, Portal: ${portalRecords.length}`);
+           // -----------------------------------------
+
 
 
             // 4. Perform Reconciliation
@@ -227,6 +247,7 @@ export class ReconcileController {
                     missingInPortal: InternalInvoiceRecord[];
                     missingInLocal: InternalInvoiceRecord[];
                     mismatchedAmounts: ReconciliationMismatch[]; // Adjust type if needed
+                    potentialMatches: ReconciliationPotentialMatch[]; // Adjust type if needed
                 }>
             };
 

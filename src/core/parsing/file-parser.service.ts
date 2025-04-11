@@ -225,10 +225,60 @@ export class FileParserService implements IFileParserService {
         // --- Process CDN Records (Credit/Debit Notes) --- Optional ---
         if (docData.cdnr && Array.isArray(docData.cdnr)) {
             this.logger.info(`Processing ${docData.cdnr.length} CDNR suppliers...`);
-            // Similar loop structure as B2B, but iterate through `nt` array
-            // Map `ntnum` -> `invoiceNumberRaw`, `ntdt` -> `date`, `typ` -> `documentType` ('C'/'D')
-            // Remember tax values in CDNs might represent reduction/increase
-            // TODO: Implement CDNR parsing if needed for reconciliation scope
+            for (const supplierEntry of docData.cdnr) {
+                const supplierGstin = supplierEntry.ctin?.trim().toUpperCase();
+                const supplierName = supplierEntry.trdnm?.trim();
+
+                if (!supplierGstin) {
+                    this.logger.warn('Skipping CDNR entry with missing Supplier GSTIN (ctin).', supplierEntry);
+                    continue;
+                }
+                if (!supplierEntry.nt  || !Array.isArray(supplierEntry.nt)) {
+                    this.logger.warn(`Skipping B2B entry for ${supplierGstin} due to missing or invalid 'inv' array.`, supplierEntry);
+                    continue;
+                }
+
+                for (const note  of supplierEntry.nt) {
+                    lineNumber++;
+                    const parsedDate = parsePortalDate(note.dt);
+                    if (!parsedDate) {
+                        this.logger.warn(`Skipping CDNR  for ${supplierGstin} due to invalid date: ${note.dt}`, note);
+                        continue; // Skip record if date is invalid
+                    }
+
+                    const igst = Number(note.igst ?? 0);
+                    const cgst = Number(note.cgst ?? 0);
+                    const sgst = Number(note.sgst ?? 0);
+                    const taxableAmount = Number(note.txval ?? 0);
+                    const totalTax = parseFloat((igst + cgst + sgst).toFixed(2)); // Calculate and round
+
+                    const partialRecord: Partial<InternalInvoiceRecord> = {
+                        id: uuidv4(),
+                        source: 'portal',
+                        supplierGstin: supplierGstin,
+                        supplierName: supplierName,
+                        invoiceNumberRaw: note.ntnum,
+                        invoiceNumberNormalized: normalizeInvoiceNumber(note.ntnum), // Normalize here
+                        date: parsedDate,
+                        dateMonthYear: getCanonicalMonthYear(parsedDate), // Calculate here
+                        taxableAmount: taxableAmount,
+                        igst: igst,
+                        cgst: cgst,
+                        sgst: sgst,
+                        totalTax: totalTax,
+                        invoiceValue: Number(note.val ?? (taxableAmount + totalTax)), // Use provided or calculate
+                        originalLineNumber: lineNumber,
+                        rawData: options?.includeRawData ? note : undefined, // Optional raw data
+                        // Map portal specific fields
+                        placeOfSupply: note.pos,
+                        reverseCharge: note.rev === 'Y',
+                        itcAvailable: note.itcavl === 'Y',
+                        itcReason: note.rsn,
+                        documentType: 'INV' // Mark as Invoice
+                    };
+                    records.push(partialRecord);
+                }
+            }
         }
 
         // TODO: Add parsing for B2BA, CDNA if amendments are needed

@@ -44,6 +44,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             this.createPerfectlyMatchedSheet(workbook, results.details);
             this.createToleranceMatchedSheet(workbook, results.details);
             this.createMismatchedAmountSheet(workbook, results.details); 
+            this.createPotentialMatchSheet(workbook, results.details);
             this.createMissingInPortalSheet(workbook, results.details);
             this.createMissingInLocalSheet(workbook, results.details);
 
@@ -80,7 +81,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         // Add summary data
         this.addSummaryRow(sheet, 'Reconciliation Timestamp:', summary.reconciliationTimestamp, DATE_FORMAT + ' hh:mm:ss');
         sheet.addRow([]); // Spacer row
-        this.addSummaryRow(sheet, 'Total Local Records:', summary.totalLocalRecords);
+        this.addSummaryRow(sheet, 'Total Purchase Records:', summary.totalLocalRecords);
         this.addSummaryRow(sheet, 'Total Portal (GSTR-2B) Records:', summary.totalPortalRecords);
         this.addSummaryRow(sheet, 'Total Unique Suppliers (Local):', summary.totalSuppliersLocal);
         this.addSummaryRow(sheet, 'Total Unique Suppliers (Portal):', summary.totalSuppliersPortal);
@@ -88,6 +89,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         this.addSummaryRow(sheet, 'Perfectly Matched Records:', summary.perfectlyMatchedCount);
         this.addSummaryRow(sheet, 'Matched within Tolerance:', summary.toleranceMatchedCount);
         this.addSummaryRow(sheet, 'Mismatch in Portal vs Book:', summary.mismatchedAmountsCount);
+        this.addSummaryRow(sheet, 'Potential Matches Found:', summary.potentialMatchCount); // Add new row
         this.addSummaryRow(sheet, 'Missing in Portal (GSTR-2B):', summary.missingInPortalCount);
         this.addSummaryRow(sheet, 'Missing in Local Books:', summary.missingInLocalCount);
 
@@ -302,6 +304,36 @@ export class ReportGeneratorService implements IReportGeneratorService {
             });
         });
 
+        this.autoFitColumns(sheet, headers);
+    }
+
+    // *** ADD NEW SHEET FUNCTION ***
+    private createPotentialMatchSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
+        const sheet = workbook.addWorksheet('Potential Matches');
+         const headers = [
+            'Supplier GSTIN', 'Supplier Name',
+            'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax',
+            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax',
+            'Similarity Method', 'Similarity Score' // Add similarity info
+        ];
+        this.styleHeaderRow(sheet.addRow(headers));
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+        details.forEach((supplierData, gstin) => {
+            supplierData.potentialMatches?.forEach(potential => { // Iterate new array
+                 const row = sheet.addRow([
+                        gstin, supplierData.supplierName ?? '',
+                        potential.localRecord.invoiceNumberRaw, potential.localRecord.date, potential.localRecord.taxableAmount, potential.localRecord.totalTax,
+                        potential.portalRecord.invoiceNumberRaw, potential.portalRecord.date, potential.portalRecord.taxableAmount, potential.portalRecord.totalTax,
+                        potential.similarityMethod ?? '', // Show how match was found
+                        potential.similarityScore ?? ''  // Show score (e.g., Levenshtein distance)
+                    ]);
+                    // Date cols 4, 8. Currency cols 5,6, 9,10. Score col 12 maybe general.
+                    this.formatDataRow(row, [4, 8], [5, 6, 9, 10]);
+                     // Format score as number if it's numeric
+                     if(typeof potential.similarityScore === 'number'){ row.getCell(12).numFmt = '0'; }
+            });
+        });
         this.autoFitColumns(sheet, headers);
     }
 

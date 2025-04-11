@@ -4,9 +4,11 @@ import { container, inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 import config from '../../config';
 import { LOGGER_TOKEN } from '../../infrastructure/logger';
-import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationResults } from '../common/interfaces/models';
+import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationPotentialMatch, ReconciliationResults } from '../common/interfaces/models';
+
+import { IValidationService, ValidationService } from '../validation';
 import { IReconciliationService, ReconciliationOptions } from './interfaces/services';
-import { excelSerialDateToJSDate, getCanonicalMonthYear, getFinancialYear, normalizeInvoiceNumber, parseDateString } from './normalization.utils';
+import { checkInvoiceSimilarity } from './normalization.utils';
 
 // Small epsilon for comparing floating point numbers for "perfect" match
 const FLOAT_EPSILON = 0.001;
@@ -16,7 +18,8 @@ const FLOAT_EPSILON = 0.001;
 export class ReconciliationService implements IReconciliationService {
 
     constructor(
-        @inject(LOGGER_TOKEN) private logger: Logger
+        @inject(LOGGER_TOKEN) private logger: Logger,
+        @inject(ValidationService) private validationService: IValidationService
     ) {
         this.logger.info('ReconciliationService initialized.');
     }
@@ -25,8 +28,8 @@ export class ReconciliationService implements IReconciliationService {
      * Performs reconciliation between local purchase data and portal data.
      */
     async reconcile(
-        localDataInput: InternalInvoiceRecord[],
-        portalDataInput: InternalInvoiceRecord[],
+        localData: InternalInvoiceRecord[],
+        portalData: InternalInvoiceRecord[],
         options?: ReconciliationOptions // Options currently not used, but available for future extension
     ): Promise<ReconciliationResults> {
 
@@ -34,98 +37,37 @@ export class ReconciliationService implements IReconciliationService {
         const effectiveToleranceAmount = options?.toleranceAmount ?? config.reconciliation.toleranceAmount;
         const effectiveToleranceTax = options?.toleranceTax ?? config.reconciliation.toleranceTax;
         const effectiveDateStrategy = options?.dateMatchStrategy ?? 'month'; // Default to 'month'
+        const reconciliationScope = options?.reconciliationScope ?? 'all'; // Default to all
 
-        this.logger.info(`Starting reconciliation. Local: ${localDataInput.length}, Portal: ${portalDataInput.length}`);
-        this.logger.info(`Using Tolerances: Amount=±${effectiveToleranceAmount}, Tax=±${effectiveToleranceTax}`);
+        this.logger.info(`Starting reconciliation. Scope: ${reconciliationScope}, Local: ${localData.length}, Portal: ${portalData.length}`);
+        this.logger.info(`Using Tolerances: Amount=±<span class="math-inline">\{effectiveToleranceAmount\}, Tax\=±</span>{effectiveToleranceTax}`);
         this.logger.info(`Using Date Match Strategy: ${effectiveDateStrategy}`);
 
-
-        const standardize = (record: InternalInvoiceRecord): InternalInvoiceRecord => {
-            // --- Ensure tax components are numbers BEFORE calculation ---
-            const igstNum = Number(record.igst || 0);
-            const cgstNum = Number(record.cgst || 0);
-            const sgstNum = Number(record.sgst || 0);
-
-            // Calculate totalTax using the numeric values
-            const totalTax = igstNum > 0 ? igstNum : (cgstNum + sgstNum);
-
-            // --- Remove or comment out the problematic log if it was just for debugging ---
-            // this.logger.info(totalTax) // This should now log a number
-
-            // Ensure taxable amount is a number for calculation/return
-            const taxableAmountNum = Number(record.taxableAmount || 0);
-
-            // const parsedDate = record.date instanceof Date ? record.date : new Date(record.date); // Ensure it's a Date object
-            // --- Robust Date Parsing ---
-            let parsedDate: Date | null = null;
-            if (record.date instanceof Date && !isNaN(record.date.getTime())) {
-                // 1. If already a valid Date (likely from JSON parser)
-                record.date.setUTCHours(12, 0, 0, 0); // Ensure UTC noon
-                parsedDate = record.date;
-            } else if (typeof record.date === 'number' && record.source === 'local') {
-                // 2. If it's a number from local source (Excel serial)
-                parsedDate = excelSerialDateToJSDate(record.date);
-                if (!parsedDate) {
-                    this.logger.warn(`Could not parse Excel date serial number "${record.date}" for record ID ${record.id}.`);
-                }
-            } else if (typeof record.date === 'string') {
-                // 3. If it's a string (e.g., maybe from JSON or poorly parsed Excel), try DD-MM-YYYY
-                parsedDate = parseDateString(record.date); // Re-use or refine this helper
-                if (!parsedDate) {
-                    // Optionally try other formats or ISO string conversion
-                    const isoDate = new Date(record.date);
-                    if (!isNaN(isoDate.getTime())) {
-                        isoDate.setUTCHours(12, 0, 0, 0);
-                        parsedDate = isoDate;
-                    } else {
-                        this.logger.warn(`Could not parse date string "${record.date}" for record ID ${record.id} using known formats.`);
-                    }
-                }
-            }
-
-            // Assign an invalid Date object if parsing failed completely
-            if (!(parsedDate instanceof Date) || isNaN(parsedDate.getTime())) {
-                this.logger.warn(`Assigning invalid date for record ID ${record.id}. Original value: ${record.date}`);
-                parsedDate = new Date('Invalid Date');
-            }
-
-
-            return {
-                ...record, // Spread original record first
-                invoiceNumberNormalized: normalizeInvoiceNumber(record.invoiceNumberRaw),
-                dateMonthYear: getCanonicalMonthYear(record.date),
-                financialYear: getFinancialYear(parsedDate), // Calculate FY here too
-                date: parsedDate,
-                // --- Assign the correctly calculated numeric totalTax, rounded ---
-                totalTax: parseFloat(totalTax.toFixed(2)),
-                // --- Assign the ensured numeric values back ---
-                taxableAmount: taxableAmountNum,
-                igst: igstNum,
-                cgst: cgstNum,
-                sgst: sgstNum,
-                // Calculate invoiceValue using ensured numeric values
-                invoiceValue: Number(record.invoiceValue || (taxableAmountNum + totalTax))
-            };
+        // --- Filter Data Based on Scope ---
+        const filterByScope = (record: InternalInvoiceRecord) => {
+            if (reconciliationScope === 'all') return true;
+            if (reconciliationScope === 'b2b') return record.documentType === 'INV'; // Assuming 'INV' for B2B
+            if (reconciliationScope === 'cdnr') return record.documentType === 'C' || record.documentType === 'D';
+            return false;
         };
-
-        const localData = localDataInput.map(standardize);
-        const portalData = portalDataInput.map(standardize);
-        // --- End Temporary Standardization Step ---
-
-
+        const filteredLocalData = localData.filter(filterByScope);
+        const filteredPortalData = portalData.filter(filterByScope);
+        this.logger.info(`Filtered records for scope "${reconciliationScope}". Local: ${filteredLocalData.length}, Portal: ${filteredPortalData.length}`);
+        // --- End Filter ---
         // Initialize results
         const results: ReconciliationResults = {
             summary: {
-                totalLocalRecords: localData.length,
-                totalPortalRecords: portalData.length,
+                totalLocalRecords: filteredLocalData.length,
+                totalPortalRecords: filteredPortalData.length,
                 perfectlyMatchedCount: 0,
                 toleranceMatchedCount: 0,
-                missingInPortalCount: 0,
-                missingInLocalCount: 0, //added this
                 mismatchedAmountsCount: 0,
+                potentialMatchCount: 0,
+                missingInPortalCount: 0,
+                missingInLocalCount: 0,
                 totalSuppliersLocal: 0,
                 totalSuppliersPortal: 0,
-                reconciliationTimestamp: new Date(),
+                reconciliationTimestamp: new Date()
             },
             details: new Map<string, {
                 supplierName?: string;
@@ -133,124 +75,146 @@ export class ReconciliationService implements IReconciliationService {
                 missingInPortal: InternalInvoiceRecord[];
                 missingInLocal: InternalInvoiceRecord[];
                 mismatchedAmounts: ReconciliationMismatch[];
+                potentialMatches: ReconciliationPotentialMatch[];
             }>()
         };
 
         const matchedLocalRecordIds = new Set<string>();
         const matchedPortalRecordIds = new Set<string>();
-
-        // Group data by Supplier GSTIN
         const localMapBySupplier = this.groupDataBySupplier(localData);
         const portalMapBySupplier = this.groupDataBySupplier(portalData);
         const uniqueSuppliers = new Set([...localMapBySupplier.keys(), ...portalMapBySupplier.keys()]);
-
         results.summary.totalSuppliersLocal = localMapBySupplier.size;
         results.summary.totalSuppliersPortal = portalMapBySupplier.size;
-
         this.logger.info(`Processing ${uniqueSuppliers.size} unique suppliers.`);
 
+
         // ---Main Reconciliation Loop,Iterate through each supplier---
+        this.logger.info('Starting Pass 1: Exact Invoice Number Matches...');
         for (const supplierGstin of uniqueSuppliers) {
             const supplierLocalInvoices = localMapBySupplier.get(supplierGstin) || [];
             const supplierPortalInvoices = portalMapBySupplier.get(supplierGstin) || [];
-            const supplierName = supplierLocalInvoices[0]?.supplierName ?? supplierPortalInvoices[0]?.supplierName;
 
-            // Initialize result entry for this supplier
-            results.details.set(supplierGstin, {
-                supplierName: supplierName,
-                matches: [],
-                missingInPortal: [],
-                missingInLocal: [],
-                mismatchedAmounts: []
-            });
-            const supplierResults = results.details.get(supplierGstin)!; // Assert non-null as we just set it
-
-            // Attempt to match local invoices against portal invoices for this supplier
+            // Initialize result entry if not already present (might be empty supplier list)
+            if (!results.details.has(supplierGstin)) {
+                const supplierName = supplierLocalInvoices[0]?.supplierName ?? supplierPortalInvoices[0]?.supplierName;
+                results.details.set(supplierGstin, { supplierName: supplierName, matches: [], missingInPortal: [], missingInLocal: [], mismatchedAmounts: [], potentialMatches: [] });
+            }
+            const supplierResults = results.details.get(supplierGstin)!;
             for (const localInv of supplierLocalInvoices) {
-                if (matchedLocalRecordIds.has(localInv.id)) continue; // Skip if already matched
-                // this.logger.info(`Processing Local Invoice ${localInv.invoiceNumberNormalized}.`);
-                // let foundMatchForLocal = false;
+                if (matchedLocalRecordIds.has(localInv.id)) continue; // Skip if already handled
                 for (const portalInv of supplierPortalInvoices) {
-                    if (matchedPortalRecordIds.has(portalInv.id)) continue; // Skip if already matched
-                    // --- Apply Matching Rules ---
-                    // Rule B: Same Month/Year
+                    if (matchedPortalRecordIds.has(portalInv.id)) continue; // Skip if already handled
+
+                    // --- Check Date (Rule B) ---
                     let isDateMatch = false;
                     if (effectiveDateStrategy === 'fy') {
-                        // Check if financialYear was calculated and matches
                         isDateMatch = !!localInv.financialYear && !!portalInv.financialYear && (localInv.financialYear === portalInv.financialYear);
-                    } else { // Default to 'month'
-                        isDateMatch = localInv.dateMonthYear === portalInv.dateMonthYear;
+                    } else {
+                        isDateMatch = !!localInv.dateMonthYear && !!portalInv.dateMonthYear && (localInv.dateMonthYear === portalInv.dateMonthYear);
                     }
-                    if (!isDateMatch) continue;
+                    if (!isDateMatch) continue; // Skip if dates don't match by selected strategy
 
-                    // if (localInv.dateMonthYear !== portalInv.dateMonthYear) continue;
+                    // --- Check EXACT Normalized Invoice Number (Rule A) ---
 
-                    // Rule A: Normalized Invoice Number
-                    if (localInv.invoiceNumberNormalized !== portalInv.invoiceNumberNormalized) continue;
+                    if (localInv.invoiceNumberNormalized === portalInv.invoiceNumberNormalized) {
+                        // --- Invoice Numbers Match Exactly - Now Check Amounts ---
+                        const taxableAmountDiff = localInv.taxableAmount - portalInv.taxableAmount;
+                        const taxAmountDiff = localInv.totalTax - portalInv.totalTax;
+                        const isAmountMatchTolerance = Math.abs(taxableAmountDiff) <= effectiveToleranceAmount && Math.abs(taxAmountDiff) <= effectiveToleranceTax;
 
-                    // Rule C: Amount Tolerances
-                    const taxableAmountDiff = Math.abs(localInv.taxableAmount - portalInv.taxableAmount);
-                    const taxAmountDiff = Math.abs(localInv.totalTax - portalInv.totalTax);
-
-                    const isTaxableAmountMatch = taxableAmountDiff <= effectiveToleranceAmount;
-                    const isTaxAmountMatch = taxAmountDiff <= effectiveToleranceTax;
-
-                    if (isTaxableAmountMatch && isTaxAmountMatch) {
-                        // --- Match Found ---
-                        // foundMatchForLocal = true;
+                        // Mark both as handled regardless of amount match status
                         matchedLocalRecordIds.add(localInv.id);
                         matchedPortalRecordIds.add(portalInv.id);
 
-                        // Determine if perfect or tolerance match
-                        const isPerfectTaxable = taxableAmountDiff < FLOAT_EPSILON;
-                        const isPerfectTax = taxAmountDiff < FLOAT_EPSILON;
-                        // Consider other factors for perfect match if needed (e.g., exact date)
-                        const isPerfectMatch = isPerfectTaxable && isPerfectTax;
-                        const status = isPerfectMatch ? 'MatchedPerfectly' : 'MatchedWithTolerance';
-
-                        if (status === 'MatchedPerfectly') {
-                            results.summary.perfectlyMatchedCount++;
-                        } else {
-                            results.summary.toleranceMatchedCount++;
-                        }
-
-                        // Create match object
-                        const match: ReconciliationMatch = {
-                            localRecord: localInv,
-                            portalRecord: portalInv,
-                            status: status,
-                            toleranceDetails: {
-                                taxableAmount: !isPerfectTaxable,
-                                taxAmount: !isPerfectTax,
-                                rawInvoiceNumberDiffers: localInv.invoiceNumberRaw !== portalInv.invoiceNumberRaw,
-                                exactDateDiffers: localInv.date!.getTime() !== portalInv.date!.getTime(),
+                        if (isAmountMatchTolerance) {
+                            // Amounts Match within Tolerance
+                            const isPerfectTaxable = Math.abs(taxableAmountDiff) < FLOAT_EPSILON;
+                            const isPerfectTax = Math.abs(taxAmountDiff) < FLOAT_EPSILON;
+                            const isPerfectMatch = isPerfectTaxable && isPerfectTax;
+                            const status = isPerfectMatch ? 'MatchedPerfectly' : 'MatchedWithTolerance';
+                            if (status === 'MatchedPerfectly') { results.summary.perfectlyMatchedCount++; } else { results.summary.toleranceMatchedCount++; }
+                            const exactDateCompare = localInv.date && portalInv.date ? localInv.date.getTime() === portalInv.date.getTime() : localInv.date === portalInv.date;
+                            const match: ReconciliationMatch = {
+                                localRecord: localInv, portalRecord: portalInv, status: status,
+                                toleranceDetails: {
+                                    taxableAmount: !isPerfectTaxable, taxAmount: !isPerfectTax,
+                                    rawInvoiceNumberDiffers: localInv.invoiceNumberRaw !== portalInv.invoiceNumberRaw,
+                                    exactDateDiffers: !exactDateCompare,
+                                }
                             }
-                        };
-                        supplierResults.matches.push(match);
-                    } else {
-                        // --- Amounts DO NOT Match within Tolerance (It's a Mismatch) ---
-                        matchedLocalRecordIds.add(localInv.id); // Mark both as handled
-                        matchedPortalRecordIds.add(portalInv.id);
-
-                        const mismatch: ReconciliationMismatch = {
-                            localRecord: localInv,
-                            portalRecord: portalInv,
-                            taxableAmountDifference: parseFloat(taxableAmountDiff.toFixed(2)),
-                            totalTaxDifference: parseFloat(taxAmountDiff.toFixed(2))
-                        };
-                        supplierResults.mismatchedAmounts.push(mismatch);
-                        // Increment a new summary counter if needed (e.g., results.summary.mismatchedCount++)
-                        // --- Increment the mismatch counter ---
-                        results.summary.mismatchedAmountsCount++;
-                        // --------------------------------------
-                
+                            supplierResults.matches.push(match);
+                        } else {
+                            // Amount Mismatch
+                            const mismatch: ReconciliationMismatch = {
+                                localRecord: localInv, portalRecord: portalInv,
+                                taxableAmountDifference: parseFloat(taxableAmountDiff.toFixed(2)),
+                                totalTaxDifference: parseFloat(taxAmountDiff.toFixed(2))
+                            };
+                            supplierResults.mismatchedAmounts.push(mismatch);
+                            results.summary.mismatchedAmountsCount++;
+                        }
+                        break; // Found the exact invoice number pair for this localInv, move to next localInv
                     }
-                    break; // Found match for localInv, move to the next localInv
-                } // End inner portal invoice loop
-            } // End outer local invoice loop
+                } // End inner portal invoice loop (Pass 1)
+            } // End outer local invoice loop (Pass 1)
+        } // End supplier loop (Pass 1)
+        this.logger.info('Finished Pass 1.');
 
+        // --- PASS 2: Find Potential Matches (among remaining records) ---
+        this.logger.info('Starting Pass 2: Potential Invoice Number Matches...');
+        for (const supplierGstin of uniqueSuppliers) {
+            const supplierLocalInvoices = localMapBySupplier.get(supplierGstin) || [];
+            const supplierPortalInvoices = portalMapBySupplier.get(supplierGstin) || [];
+            const supplierResults = results.details.get(supplierGstin)!; // Should exist from Pass 1
+            for (const localInv of supplierLocalInvoices) {
+                // *** Check if localInv was already handled in Pass 1 ***
+                if (matchedLocalRecordIds.has(localInv.id)) continue;
+                for (const portalInv of supplierPortalInvoices) {
+                    // *** Check if portalInv was already handled in Pass 1 ***
+                    if (matchedPortalRecordIds.has(portalInv.id)) continue;
+                    // --- Check Date (Rule B) ---
+                    let isDateMatch = false;
+                    if (effectiveDateStrategy === 'fy') {
+                        isDateMatch = !!localInv.financialYear && !!portalInv.financialYear && (localInv.financialYear === portalInv.financialYear);
+                    } else {
+                        isDateMatch = !!localInv.dateMonthYear && !!portalInv.dateMonthYear && (localInv.dateMonthYear === portalInv.dateMonthYear);
+                    }
+                    if (!isDateMatch) continue; // Skip if dates don't match by selected strategy
+                    // --- Check Amounts within Tolerance (Rule C) ---
+                    // NOTE: Invoice numbers are known NOT to match exactly here
+                    const taxableAmountDiff = Math.abs(localInv.taxableAmount - portalInv.taxableAmount);
+                    const taxAmountDiff = Math.abs(localInv.totalTax - portalInv.totalTax);
+                    const isAmountMatchTolerance = taxableAmountDiff <= effectiveToleranceAmount && taxAmountDiff <= effectiveToleranceTax;
+                    if (isAmountMatchTolerance) {
+                        // --- Date and Amounts Match - Check Similarity ---
+                        const similarity = checkInvoiceSimilarity(localInv.invoiceNumberRaw, portalInv.invoiceNumberRaw);
+                        if (similarity) {
+                            // Found a potential match
+                            matchedLocalRecordIds.add(localInv.id); // Mark both as handled
+                            matchedPortalRecordIds.add(portalInv.id);
+                            const potential: ReconciliationPotentialMatch = {
+                                localRecord: localInv, portalRecord: portalInv,
+                                similarityMethod: similarity.method, similarityScore: similarity.score
+                            };;
+                            supplierResults.potentialMatches.push(potential);
+                            results.summary.potentialMatchCount++;
+                            this.logger.debug(`Found Potential Match: Local ${localInv.invoiceNumberRaw} <> Portal ${portalInv.invoiceNumberRaw}`);
+                            break; // Found potential pairing for localInv, move to next localInv
+                        }
+                    }
+                } // End inner portal invoice loop (Pass 2)
+            } // End outer local invoice loop (Pass 2)
+        } // End supplier loop (Pass 2)
+        this.logger.info('Finished Pass 2.');
 
-            // Identify unmatched records for this supplier
+        // --- Final Pass: Identify Missing Records ---
+        this.logger.info('Starting Final Pass: Identifying Missing Records...');
+        for (const supplierGstin of uniqueSuppliers) {
+            const supplierLocalInvoices = localMapBySupplier.get(supplierGstin) || [];
+            const supplierPortalInvoices = portalMapBySupplier.get(supplierGstin) || [];
+            const supplierResults = results.details.get(supplierGstin)!;
+
             for (const localInv of supplierLocalInvoices) {
                 if (!matchedLocalRecordIds.has(localInv.id)) {
                     supplierResults.missingInPortal.push(localInv);
@@ -263,7 +227,8 @@ export class ReconciliationService implements IReconciliationService {
                     results.summary.missingInLocalCount++;
                 }
             }
-        } // End supplier loop
+        }
+        this.logger.info('Finished Identifying Missing Records.');
 
         this.logger.info('Reconciliation completed.');
         this.logger.info(`Summary: Perfectly Matched: ${results.summary.perfectlyMatchedCount}, Tolerance Matched: ${results.summary.toleranceMatchedCount}, Missing in Portal: ${results.summary.missingInPortalCount}, Missing in Local: ${results.summary.missingInLocalCount}`);

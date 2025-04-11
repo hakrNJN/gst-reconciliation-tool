@@ -6,6 +6,7 @@ export interface ReconciliationOptions {
     toleranceAmount?: number;
     toleranceTax?: number;
     dateMatchStrategy?: 'month' | 'fy';
+    reconciliationScope?: 'all' | 'b2b'|'cdnr'; // Full reconciliation or just a summary
     // Add other potential options here
 }
 

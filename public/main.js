@@ -30,7 +30,13 @@ document.addEventListener('DOMContentLoaded', () => {
         statusArea.innerHTML = ''; statusArea.className = `alert alert-${type}`;
         statusArea.textContent = message; statusArea.classList.remove('visually-hidden');
     }
-    function showExportStatus(message, type = 'info') { /* ... as before ... */ }
+
+    function showExportStatus(message, type = 'info') {
+        exportStatusArea.innerHTML = ''; // Clear previous export status
+        exportStatusArea.className = `alert alert-${type}`;
+        exportStatusArea.textContent = message;
+        exportStatusArea.classList.remove('visually-hidden');
+    }
     function hideStatus() { statusArea.classList.add('visually-hidden'); }
     function hideExportStatus() { exportStatusArea.classList.add('visually-hidden'); }
     function formatDate(dateString) { // Format date string/object for display
@@ -101,6 +107,10 @@ document.addEventListener('DOMContentLoaded', () => {
                      supplierData.mismatchedAmounts
                         ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
                     break;
+                case 'potential':
+                     supplierData.potentialMatches
+                        ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
+                    break;
                 case 'missingPortal':
                     supplierData.missingInPortal
                         ?.forEach(r => dataRows.push({ gstin, supplierName, ...r }));
@@ -121,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal') {
                  headers = ['Supplier GSTIN', 'Supplier Name', 'Invoice No', 'Date', 'Taxable Amt', 'Total Tax', 'Invoice Value'];
                  headers.forEach(h => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; trHead.appendChild(th); });
-            } else if (category === 'tolerance' || category === 'mismatch') {
+            } else if (category === 'tolerance' || category === 'mismatch' || category === 'potential') {
                  headers = [
                     'Supplier GSTIN', 'Supplier Name',
                     'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
@@ -148,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${formatCurrency(rowData.totalTax)}</td>
                         <td>${formatCurrency(rowData.invoiceValue)}</td>
                     `;
-                } else if (category === 'tolerance' || category === 'mismatch') {
+                } else if (category === 'tolerance' || category === 'mismatch' || category === 'potential') {
                      const local = rowData.localRecord || {}; // Handle potential direct properties in mismatch
                      const portal = rowData.portalRecord || {};
                      const taxableDiff = rowData.taxableAmountDifference ?? rowData.taxableDiff ?? 0; // Use specific diff if available
@@ -204,10 +214,14 @@ document.addEventListener('DOMContentLoaded', () => {
         submitButton.disabled = true; submitSpinner.style.display = 'inline-block';
 
         const formData = new FormData(form);
-        formData.append('toleranceAmount', toleranceAmountInput.value);
-        formData.append('toleranceTax', toleranceTaxInput.value);
-        const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
-        formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
+        const selectedScopeRadio = document.querySelector('input[name="reconciliationScope"]:checked');
+        const scopeValue = selectedScopeRadio ? selectedScopeRadio.value : 'all'; // Default to 'all'
+        formData.append('reconciliationScope', scopeValue);
+        console.log("Sending Scope:", scopeValue); // For debugging
+        // formData.append('toleranceAmount', toleranceAmountInput.value);
+        // formData.append('toleranceTax', toleranceTaxInput.value);
+        // const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
+        // formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
 
         try {
             const response = await fetch('/api/reconcile', { method: 'POST', body: formData });
@@ -251,6 +265,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Export Button Click Listener (remains the same logic)
-    exportButton.addEventListener('click', async () => { /* ... existing export logic ... */ });
+     // (Export button handler remains the same as before)
+    exportButton.addEventListener('click', async () => {
+         if (!currentResultsData) { showExportStatus('No results data available to export.', 'warning'); return; }
+         showExportStatus('Generating export...', 'info');
+         exportButton.disabled = true; exportSpinner.style.display = 'inline-block';
+         try {
+             const response = await fetch('/api/reconcile/export', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(currentResultsData) });
+             if (response.ok) {
+                 const blob = await response.blob();
+                 const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
+                 const disposition = response.headers.get('content-disposition'); let filename = 'reconciliation-report.xlsx';
+                 if (disposition?.includes('filename=')) { const fnMatch = disposition.match(/filename="?(.+)"?/i); if (fnMatch?.[1]) filename = fnMatch[1]; }
+                 a.download = filename; document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); a.remove();
+                 showExportStatus('Report downloaded successfully.', 'success');
+             } else {
+                 let errorMsg = `Export failed: ${response.status} ${response.statusText}`; try { const errData = await response.json(); errorMsg = `Error: ${errData.message || errorMsg}`; } catch(e){} showExportStatus(errorMsg, 'danger');
+             }
+         } catch (error) { console.error('Export fetch error:', error); showExportStatus(`Network or client-side error during export: ${error.message}`, 'danger');
+         } finally { exportButton.disabled = false; exportSpinner.style.display = 'none'; }
+    });
 
 }); // End DOMContentLoaded

@@ -1,4 +1,68 @@
 // src/core/reconciliation/normalization.utils.ts
+import { distance as levenshteinDistance } from 'fastest-levenshtein'; // Import library
+
+
+/** Extracts the primary numeric sequence from a string */
+function extractNumericPart(str: string | null | undefined): string {
+    if (!str) return '';
+    // Find sequences of digits, optionally separated by internal hyphens/slashes often ignored
+    // Prioritize longer sequences. Match numbers that might be at end, start, or middle.
+    const numericMatches = String(str).match(/\d[\d/-]*\d|\d+/g); // Find sequences of digits, possibly with internal - or /
+    if (!numericMatches) return '';
+    // Return the longest numeric sequence found
+    return numericMatches.sort((a, b) => b.length - a.length)[0].replace(/[-/]/g, ''); // Remove internal separators for comparison
+}
+
+/**
+ * Checks if two invoice numbers are potentially similar.
+ * @param inv1 Raw invoice number 1
+ * @param inv2 Raw invoice number 2
+ * @param threshold Levenshtein distance threshold (e.g., 2)
+ * @returns Object indicating similarity and method/score, or null if not similar.
+ */
+export function checkInvoiceSimilarity(
+    inv1: string | null | undefined,
+    inv2: string | null | undefined,
+    threshold: number = 2 // Default Levenshtein threshold
+): { method: 'Numeric' | 'Levenshtein'; score: number } | null {
+
+    if (!inv1 || !inv2) return null;
+
+    const str1 = String(inv1).trim().toUpperCase();
+    const str2 = String(inv2).trim().toUpperCase();
+
+    console.log(`Comparing: ${str1} vs ${str2}`);
+
+    if (str1 === str2) return null; // Not needed if they are identical raw
+
+    // 1. Check numeric parts
+    const num1 = extractNumericPart(str1);
+    const num2 = extractNumericPart(str2);
+    if (num1 && num1 === num2 && num1.length > 2) { // Ensure numeric part is somewhat significant
+        // Check if non-numeric parts are short/ignorable (simple check)
+         const nonNum1 = str1.replace(num1, '');
+         const nonNum2 = str2.replace(num2, '');
+         // Allow if non-numeric parts are very short or mostly non-alphanumeric
+         if (nonNum1.replace(/[^A-Z]/g, '').length <= 3 && nonNum2.replace(/[^A-Z]/g, '').length <= 3) {
+            return { method: 'Numeric', score: 0 }; // Score 0 for numeric match
+         }
+    }
+
+    // 2. Check Levenshtein distance on cleaned strings
+    // Clean a bit more for Levenshtein (remove common separators)
+    const cleanStr1 = str1.replace(/[\s/-]/g, '');
+    const cleanStr2 = str2.replace(/[\s/-]/g, '');
+    const distance = levenshteinDistance(cleanStr1, cleanStr2);
+
+    if (distance <= threshold) {
+        return { method: 'Levenshtein', score: distance };
+    }
+
+    // (Optional: Could add substring check here if desired)
+    // if (str1.includes(str2) || str2.includes(str1)) { ... }
+
+    return null; // Not similar enough
+}
 
 /**
  * Determines the Indian Financial Year (e.g., "2023-24") for a given date.

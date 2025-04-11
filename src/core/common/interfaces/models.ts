@@ -78,6 +78,13 @@ export interface ReconciliationMismatch {
     readonly totalTaxDifference: number;
 }
 
+// --- Add PotentialMatch Interface ---
+export interface ReconciliationPotentialMatch {
+    readonly localRecord: Readonly<InternalInvoiceRecord>;
+    readonly portalRecord: Readonly<InternalInvoiceRecord>;
+    readonly similarityMethod?: 'Numeric' | 'Levenshtein'; // Indicate how similarity was found
+    readonly similarityScore?: number; // e.g., Levenshtein distance
+}
 /**
  * Structure holding the overall results of the reconciliation process.
  */
@@ -88,9 +95,10 @@ export interface ReconciliationResults {
         totalPortalRecords: number;
         perfectlyMatchedCount: number;
         toleranceMatchedCount: number;
-        missingInPortalCount: number; // Count of local records not found in portal
-        missingInLocalCount: number;  // Count of portal records not found in local
-        mismatchedAmountsCount: number; // Count of records with mismatched amounts
+        missingInPortalCount: number; 
+        missingInLocalCount: number; 
+        mismatchedAmountsCount: number; 
+        potentialMatchCount: number;
         totalSuppliersLocal: number;
         totalSuppliersPortal: number;
         reconciliationTimestamp: Date;
@@ -102,5 +110,6 @@ export interface ReconciliationResults {
         missingInPortal: InternalInvoiceRecord[]; // Local records not matched
         missingInLocal: InternalInvoiceRecord[];  // Portal records not matched
         mismatchedAmounts: ReconciliationMismatch[];
+        potentialMatches: ReconciliationPotentialMatch[];
     }>;
 }

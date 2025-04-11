@@ -188,6 +188,20 @@
                   >
                 </div>
               </div>
+            </div> <div class="mt-3 mb-3"> <label class="form-label d-block">Reconciliation Scope</label>
+              <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeAll" value="all" checked>
+                  <label class="form-check-label" for="scopeAll">All</label>
+              </div>
+              <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeB2B" value="b2b">
+                  <label class="form-check-label" for="scopeB2B">B2B  Only</label>
+              </div>
+              <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeCDNR" value="cdnr">
+                  <label class="form-check-label" for="scopeCDNR">CDNR Only</label>
+              </div>
+          </div>
 
               <!-- Submit button -->
               <div class="col-md-4 text-end">
@@ -239,6 +253,7 @@
             <option value="perfect">Perfectly Matched Records</option>
             <option value="tolerance">Matched with Tolerance</option>
             <option value="mismatch">Mismatched Amounts</option>
+            <option value="potential">Potential Match</option>
             <option value="missingPortal">Missing in Portal (GSTR-2B)</option>
             <option value="missingLocal">Missing in Local Books</option>
           </select>
