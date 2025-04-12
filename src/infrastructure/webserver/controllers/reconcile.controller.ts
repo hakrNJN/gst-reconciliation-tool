@@ -75,7 +75,7 @@ export class ReconcileController {
             const effectiveDateStrategy: 'month' | 'fy' = (rawDateStrategy === 'fy' || rawDateStrategy === 'month')
                 ? rawDateStrategy
                 : 'month';
-            
+
             const effectiveScope: 'all' | 'b2b' | 'cdnr' = (rawScope === 'b2b' || rawScope === 'cdnr')
                 ? rawScope
                 : 'all'; // Default to 'all'
@@ -84,7 +84,7 @@ export class ReconcileController {
                 toleranceAmount: effectiveToleranceAmount,
                 toleranceTax: effectiveToleranceTax,
                 dateMatchStrategy: effectiveDateStrategy,
-                reconciliationScope: effectiveScope 
+                reconciliationScope: effectiveScope
             };
             this.logger.info('Using reconciliation options:', options);
             // -------------------------------------------------------
@@ -107,26 +107,26 @@ export class ReconcileController {
 
 
             // 3. Validation & Standardization
-           // --- Validation & Standardization Step ---
-           this.logger.info('Validating and standardizing records...');
-           // Process in parallel
+            // --- Validation & Standardization Step ---
+            this.logger.info('Validating and standardizing records...');
+            // Process in parallel
             const [localValidatedPromise, portalValidatedPromise] = await Promise.allSettled([
-                 this.validationService.validateAndStandardize(localRawRecords, 'local'),
-                 this.validationService.validateAndStandardize(portalRawRecords, 'portal')
+                this.validationService.validateAndStandardize(localRawRecords, 'local'),
+                this.validationService.validateAndStandardize(portalRawRecords, 'portal')
             ]);
             if (localValidatedPromise.status === 'rejected') throw localValidatedPromise.reason; // Or handle more gracefully
             if (portalValidatedPromise.status === 'rejected') throw portalValidatedPromise.reason;
 
-           const localRecords = localValidatedPromise.value;
-           const portalRecords = portalValidatedPromise.value;
-           this.logger.info(`Validated records - Local: ${localRecords.length}, Portal: ${portalRecords.length}`);
-           // -----------------------------------------
+            const localRecords = localValidatedPromise.value;
+            const portalRecords = portalValidatedPromise.value;
+            this.logger.info(`Validated records - Local: ${localRecords.length}, Portal: ${portalRecords.length}`);
+            // -----------------------------------------
 
 
 
             // 4. Perform Reconciliation
             // TODO: Implement Async handling if needed based on record count / config
-            const results = await this.reconciler.reconcile(localRecords, portalRecords);
+            const results = await this.reconciler.reconcile(localRecords, portalRecords,options);
 
             // --- Prepare Response Data (Convert Map to Object) ---
             const responseData = {
@@ -254,7 +254,7 @@ export class ReconcileController {
             // Generate Excel Report
             const reportBuffer = await this.reporter.generateReport(resultsForReport);
 
-            // Set Headers and Send Buffer (as before)
+            // Set Headers and Send Buffer
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const filename = `reconciliation-report-${timestamp}.xlsx`;
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

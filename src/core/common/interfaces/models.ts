@@ -46,9 +46,11 @@ export interface InternalInvoiceRecord {
     itcAvailable?: boolean;
     /** Reason code/text if ITC is not available */
     itcReason?: string;
-    /** Type ('INV', 'CDN', 'CDNA' etc.) */
-    documentType?: string; // To distinguish invoices from notes if parsing both
+   /** Unified Document Type: 'INV' (Invoice/B2B), 'C' (Credit Note), 'D' (Debit Note) */
+    documentType?:'INV' | 'C' | 'D' | string; // To distinguish invoices from notes if parsing both
     financialYear: string; // Financial year (e.g., "2023-24") - calculated from date
+    supfileDate?: Date | null; // Date when the file was processed
+    supSource?: string; // Source of the record (e.g., "GSTR-2B", "GSTR-1", etc.)
 }
 
 /**

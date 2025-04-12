@@ -44,7 +44,7 @@ export class ReconciliationService implements IReconciliationService {
         this.logger.info(`Using Date Match Strategy: ${effectiveDateStrategy}`);
 
         // --- Filter Data Based on Scope ---
-        const filterByScope = (record: InternalInvoiceRecord) => {
+        const filterByScope = (record: InternalInvoiceRecord):boolean  => {
             if (reconciliationScope === 'all') return true;
             if (reconciliationScope === 'b2b') return record.documentType === 'INV'; // Assuming 'INV' for B2B
             if (reconciliationScope === 'cdnr') return record.documentType === 'C' || record.documentType === 'D';
@@ -129,11 +129,21 @@ export class ReconciliationService implements IReconciliationService {
 
                         if (isAmountMatchTolerance) {
                             // Amounts Match within Tolerance
+                            // Check conditions for a truly PERFECT match
                             const isPerfectTaxable = Math.abs(taxableAmountDiff) < FLOAT_EPSILON;
                             const isPerfectTax = Math.abs(taxAmountDiff) < FLOAT_EPSILON;
-                            const isPerfectMatch = isPerfectTaxable && isPerfectTax;
+                            // Null-safe exact date comparison
+                            const isExactDateMatch = localInv.date && portalInv.date ? localInv.date.getTime() === portalInv.date.getTime() : localInv.date === portalInv.date;
+                            // Optional: Check if raw invoice numbers were also identical (usually true if normalized are)
+                            // const isExactRawInvMatch = localInv.invoiceNumberRaw === portalInv.invoiceNumberRaw;
+
+                            const isPerfectMatch = isPerfectTaxable && isPerfectTax && isExactDateMatch //&& isExactRawInvMatch;
                             const status = isPerfectMatch ? 'MatchedPerfectly' : 'MatchedWithTolerance';
-                            if (status === 'MatchedPerfectly') { results.summary.perfectlyMatchedCount++; } else { results.summary.toleranceMatchedCount++; }
+                            if (status === 'MatchedPerfectly') {
+                                results.summary.perfectlyMatchedCount++;
+                            } else {
+                                results.summary.toleranceMatchedCount++;
+                            }
                             const exactDateCompare = localInv.date && portalInv.date ? localInv.date.getTime() === portalInv.date.getTime() : localInv.date === portalInv.date;
                             const match: ReconciliationMatch = {
                                 localRecord: localInv, portalRecord: portalInv, status: status,
@@ -199,7 +209,7 @@ export class ReconciliationService implements IReconciliationService {
                             };;
                             supplierResults.potentialMatches.push(potential);
                             results.summary.potentialMatchCount++;
-                            this.logger.debug(`Found Potential Match: Local ${localInv.invoiceNumberRaw} <> Portal ${portalInv.invoiceNumberRaw}`);
+                            this.logger.info(`Found Potential Match: Local ${localInv.invoiceNumberRaw} <> Portal ${portalInv.invoiceNumberRaw}`);
                             break; // Found potential pairing for localInv, move to next localInv
                         }
                     }

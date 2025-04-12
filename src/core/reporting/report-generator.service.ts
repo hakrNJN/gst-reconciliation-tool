@@ -10,6 +10,7 @@ import {
     ReconciliationMatch,
     ReconciliationResults
 } from '../common/interfaces/models';
+import { formatDateToDDMMYYYY } from '../common/utils';
 import { IReportGeneratorService, ReportOptions } from './interfaces/services';
 
 // Define standard date and number formats for Excel
@@ -43,7 +44,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             this.createSummarySheet(workbook, results.summary);
             this.createPerfectlyMatchedSheet(workbook, results.details);
             this.createToleranceMatchedSheet(workbook, results.details);
-            this.createMismatchedAmountSheet(workbook, results.details); 
+            this.createMismatchedAmountSheet(workbook, results.details);
             this.createPotentialMatchSheet(workbook, results.details);
             this.createMissingInPortalSheet(workbook, results.details);
             this.createMissingInLocalSheet(workbook, results.details);
@@ -62,7 +63,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
     private setWorkbookProperties(workbook: Workbook, timestamp: Date | string): void {
         workbook.creator = 'GST Reconciliation Tool';
         workbook.lastModifiedBy = 'GST Reconciliation Tool';
-        
+
         // Ensure timestamp is a Date object
         const created = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
         workbook.created = created;
@@ -130,7 +131,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         // const headerRow = sheet.addRow(headers);
         // headerRow.font = { bold: true };
         // sheet.views = [{ state: 'frozen', ySplit: 1 }]; // Freeze header row
-        this.styleHeaderRow(sheet.addRow(headers));
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
         // Add data rows
@@ -169,20 +170,22 @@ export class ReportGeneratorService implements IReportGeneratorService {
 
     private createPerfectlyMatchedSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
         const sheet = workbook.addWorksheet('Perfectly Matched');
-        const headers = ['Supplier GSTIN', 'Supplier Name', 'Inv No', 'Date', 'Taxable Amt', 'Total Tax', 'Inv Value'];
-        this.styleHeaderRow(sheet.addRow(headers));
+        const headers = ['Supplier GSTIN', 'Supplier Name', 'Inv No', 'Date', 'Taxable Amt', 'Total Tax', 'Inv Value', 'Source', 'Filing Date'];
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
         details.forEach((supplierData, gstin) => {
             supplierData.matches
                 .filter(match => match.status === 'MatchedPerfectly')
-                .forEach(match=> {
+                .forEach(match => {
                     // Use local or portal record - should be identical for perfectly matched
                     const record = match.localRecord;
-                     
+                    const portal = match.portalRecord;
+                    //  let supDate = parsePortalDate(portal.supfileDate)?.toLocaleDateString()
+                    let parseDate = formatDateToDDMMYYYY(portal.supfileDate)
                     const row = sheet.addRow([
                         gstin, supplierData.supplierName ?? '', record.invoiceNumberRaw, record.date,
-                        record.taxableAmount, record.totalTax, record.invoiceValue
+                        record.taxableAmount, record.totalTax, record.invoiceValue, portal.supSource, parseDate
                     ]);
                     this.formatDataRow(row, [4], [5, 6, 7]); // Date Col 4, Currency Cols 5,6,7
                 });
@@ -198,7 +201,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
             'Taxable Diff', 'Tax Diff', 'Tolerance Notes'
         ];
-        this.styleHeaderRow(sheet.addRow(headers));
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
 
@@ -231,7 +234,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
             'Taxable Diff', 'Tax Diff'
         ];
-        this.styleHeaderRow(sheet.addRow(headers));
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
 
@@ -239,7 +242,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             supplierData.mismatchedAmounts?.forEach(mismatch => {
                 const taxableDiff = mismatch.localRecord.taxableAmount - mismatch.portalRecord.taxableAmount;
                 const taxDiff = mismatch.localRecord.totalTax - mismatch.portalRecord.totalTax;
-                const row = sheet.addRow([ gstin, supplierData.supplierName ?? '',
+                const row = sheet.addRow([gstin, supplierData.supplierName ?? '',
                     mismatch.localRecord.invoiceNumberRaw, mismatch.localRecord.date, mismatch.localRecord.taxableAmount, mismatch.localRecord.totalTax, mismatch.localRecord.invoiceValue,
                     mismatch.portalRecord.invoiceNumberRaw, mismatch.portalRecord.date, mismatch.portalRecord.taxableAmount, mismatch.portalRecord.totalTax, mismatch.portalRecord.invoiceValue,
                     taxableDiff, taxDiff]);
@@ -255,7 +258,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Supplier GSTIN', 'Supplier Name', 'Local Inv No', 'Local Date',
             'Local Taxable Amt', 'Local Total Tax', 'Local Inv Value'
         ];
-        this.styleHeaderRow(sheet.addRow(headers));
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
 
@@ -284,7 +287,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Supplier GSTIN', 'Supplier Name', 'Portal Inv No', 'Portal Date',
             'Portal Taxable Amt', 'Portal Total Tax', 'Portal Inv Value'
         ];
-        this.styleHeaderRow(sheet.addRow(headers));
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
 
@@ -310,39 +313,83 @@ export class ReportGeneratorService implements IReportGeneratorService {
     // *** ADD NEW SHEET FUNCTION ***
     private createPotentialMatchSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
         const sheet = workbook.addWorksheet('Potential Matches');
-         const headers = [
+        const headers = [
             'Supplier GSTIN', 'Supplier Name',
             'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax',
             'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax',
             'Similarity Method', 'Similarity Score' // Add similarity info
         ];
-        this.styleHeaderRow(sheet.addRow(headers));
+        this.styleHeaderRow(sheet.addRow(headers),headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
         details.forEach((supplierData, gstin) => {
             supplierData.potentialMatches?.forEach(potential => { // Iterate new array
-                 const row = sheet.addRow([
-                        gstin, supplierData.supplierName ?? '',
-                        potential.localRecord.invoiceNumberRaw, potential.localRecord.date, potential.localRecord.taxableAmount, potential.localRecord.totalTax,
-                        potential.portalRecord.invoiceNumberRaw, potential.portalRecord.date, potential.portalRecord.taxableAmount, potential.portalRecord.totalTax,
-                        potential.similarityMethod ?? '', // Show how match was found
-                        potential.similarityScore ?? ''  // Show score (e.g., Levenshtein distance)
-                    ]);
-                    // Date cols 4, 8. Currency cols 5,6, 9,10. Score col 12 maybe general.
-                    this.formatDataRow(row, [4, 8], [5, 6, 9, 10]);
-                     // Format score as number if it's numeric
-                     if(typeof potential.similarityScore === 'number'){ row.getCell(12).numFmt = '0'; }
+                const row = sheet.addRow([
+                    gstin, supplierData.supplierName ?? '',
+                    potential.localRecord.invoiceNumberRaw, potential.localRecord.date, potential.localRecord.taxableAmount, potential.localRecord.totalTax,
+                    potential.portalRecord.invoiceNumberRaw, potential.portalRecord.date, potential.portalRecord.taxableAmount, potential.portalRecord.totalTax,
+                    potential.similarityMethod ?? '', // Show how match was found
+                    potential.similarityScore ?? ''  // Show score (e.g., Levenshtein distance)
+                ]);
+                // Date cols 4, 8. Currency cols 5,6, 9,10. Score col 12 maybe general.
+                this.formatDataRow(row, [4, 8], [5, 6, 9, 10]);
+                // Format score as number if it's numeric
+                if (typeof potential.similarityScore === 'number') { row.getCell(12).numFmt = '0'; }
             });
         });
         this.autoFitColumns(sheet, headers);
     }
 
     // --- Helper Methods ---
-    private styleHeaderRow(row: Row): void { // Extracted helper
-        row.font = { bold: true };
-        row.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-        // Add fill/border if desired
+    private styleHeaderRow(row: Row, headers: string[]): void {
+        // Style each header cell based on the headers array length
+        for (let i = 1; i <= headers.length; i++) {
+            const cell = row.getCell(i);
+            
+            cell.font = { 
+                bold: true,
+                color: { argb: 'FFFFFFFF' }  // White text (Background 1)
+            };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            
+            // Add dark blue fill (Text 2)
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF1F4E79' }  // Dark Blue, Text 2 color
+            };
+            
+            // Optional: Add borders for a more defined look
+            cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+            };
+        }
     }
+    // private styleHeaderRow(row: Row): void { // Extracted helper
+    //     row.font = {
+    //         bold: true,
+    //         color: { argb: 'FFFFFFFF' }  // White text (Background 1)
+    //     };
+    //     row.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+    //     // Add dark blue fill (Text 2)
+    //     row.fill = {
+    //         type: 'pattern',
+    //         pattern: 'solid',
+    //         fgColor: { argb: '1F497D' }  // Dark Blue, Text 2 color
+    //     };
+
+    //     // Optional: Add borders for a more defined look
+    //     row.border = {
+    //         top: { style: 'thin' },
+    //         left: { style: 'thin' },
+    //         bottom: { style: 'thin' },
+    //         right: { style: 'thin' }
+    //     };
+    // }
     /** Applies standard date and currency formats to cells in a row */
     private formatDataRow(row: Row, dateColIndices: number[], currencyColIndices: number[]): void {
         dateColIndices.forEach(idx => {
@@ -353,49 +400,61 @@ export class ReportGeneratorService implements IReportGeneratorService {
         });
     }
 
-   /** Auto-fits column widths based on header and some sample data */
-private autoFitColumns(sheet: Worksheet, headers: string[]): void {
-    sheet.columns.forEach((column, i) => {
-        if (column) {
-            let maxLength = headers[i]?.length ?? 10;
-            const scanRowCount = 21;
+    /** Auto-fits column widths based on header and some sample data */
+    private autoFitColumns(sheet: Worksheet, headers: string[]): void {
+        sheet.columns.forEach((column, i) => {
+            if (column) {
+                let maxLength = headers[i]?.length ?? 10;
+                const scanRowCount = 21;
 
-            try {
-                // Type guard to ensure column has eachCell method
-                if (typeof column.eachCell === 'function') {
-                    column.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
-                        if (rowNumber <= scanRowCount) {
-                            const cellValue = cell.value;
-                            const columnLength = cellValue !== null && cellValue !== undefined
-                                ? cellValue.toString().length
-                                : 0;
-                            if (columnLength > maxLength) {
-                                maxLength = columnLength;
+                try {
+                    // Type guard to ensure column has eachCell method
+                    if (typeof column.eachCell === 'function') {
+                        column.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
+                            if (rowNumber <= scanRowCount) {
+                                const cellValue = cell.value;
+                                let columnLength = 0;
+
+                                // Special handling for date values
+                                if (cellValue instanceof Date) {
+                                    // Date format strings are typically ~10 chars (DD-MM-YYYY)
+                                    columnLength = 10;
+                                } else if (cellValue !== null && cellValue !== undefined) {
+                                    columnLength = cellValue.toString().length;
+                                }
+
+                                if (columnLength > maxLength) {
+                                    maxLength = columnLength;
+                                }
                             }
+                        });
+
+                        // Set column widths based on content type
+                        if (headers[i]?.toLowerCase().includes('date')) {
+                            // Fixed width for date columns
+                            column.width = 12;
+                        } else {
+                            column.width = Math.max(12, maxLength + 4);
                         }
-                    });
-                    
-                    // Set width after making sure column is valid
-                    column.width = Math.max(12, maxLength + 4);
-                } else {
-                    this.logger.warn(`Column at index ${i} doesn't have expected eachCell method`);
-                    // Fallback if eachCell is not available
+                    } else {
+                        this.logger.warn(`Column at index ${i} doesn't have expected eachCell method`);
+                        // Fallback if eachCell is not available
+                        if ('width' in column) {
+                            column.width = Math.max(12, maxLength + 4);
+                        }
+                    }
+                } catch (cellError) {
+                    this.logger.error(`Error processing cells for column index ${i} during autoFit`, cellError);
+                    // Fallback width if cell processing fails
                     if ('width' in column) {
                         column.width = Math.max(12, maxLength + 4);
                     }
                 }
-            } catch (cellError) {
-                this.logger.error(`Error processing cells for column index ${i} during autoFit`, cellError);
-                // Fallback width if cell processing fails
-                if ('width' in column) {
-                    column.width = Math.max(12, maxLength + 4);
-                }
+            } else {
+                this.logger.warn(`Column at index ${i} was unexpectedly undefined during autoFit.`);
             }
-        } else {
-            this.logger.warn(`Column at index ${i} was unexpectedly undefined during autoFit.`);
-        }
-    });
-}
+        });
+    }
 
     /** Formats tolerance details into a readable string */
     private formatToleranceNotes(match: ReconciliationMatch): string {

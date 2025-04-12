@@ -56,9 +56,6 @@ export class ValidationService implements IValidationService {
                     // Allow string numbers from parser but check if parseable
                     throw new ValidationError(`Missing or invalid Taxable Amount`);
                 }
-                // Add checks for tax amounts if needed (e.g., at least one tax type should likely exist unless zero-rated)
-
-
                 // --- 2. Standardize & Calculate Derived Fields ---
                 const standardizedRecord = this.standardizeSingleRecord(record as any, source); // Use helper, cast needed as input is Partial
 
@@ -85,17 +82,25 @@ export class ValidationService implements IValidationService {
 
 
     /** Helper to standardize a single record (contains logic moved from ReconciliationService) */
-    private standardizeSingleRecord(record: Partial<InternalInvoiceRecord>, source: 'local' | 'portal'): InternalInvoiceRecord {
+    private standardizeSingleRecord(
+        record: Partial<InternalInvoiceRecord> & { [key: string]: any },
+        source: 'local' | 'portal'
+    ): InternalInvoiceRecord {
         // Assign source if missing (shouldn't be if called from validateAndStandardize)
         record.source = record.source ?? source;
 
+        // --- Standardize Core Fields & Calculate Taxes ---
         const igstNum = Number(record.igst || 0);
         const cgstNum = Number(record.cgst || 0);
         const sgstNum = Number(record.sgst || 0);
         const totalTax = igstNum > 0 ? igstNum : (cgstNum + sgstNum);
         const taxableAmountNum = Number(record.taxableAmount || 0);
+        // --- End Core Fields ---
 
+        // --- Robust Date Parsing ---
         let parsedDate: Date | null = null;
+
+        // ... (date parsing logic setting parsedDate) ...
         if (record.date instanceof Date && !isNaN(record.date.getTime())) {
             record.date.setUTCHours(12, 0, 0, 0);
             parsedDate = record.date;
@@ -106,9 +111,58 @@ export class ValidationService implements IValidationService {
             if (!parsedDate) { const isoDate = new Date(record.date); if (!isNaN(isoDate.getTime())) { isoDate.setUTCHours(12, 0, 0, 0); parsedDate = isoDate; } }
         }
         // If parsing failed, parsedDate remains null
+        // --- End Date Parsing ---
 
         const dateMonthYear = getCanonicalMonthYear(parsedDate);
         const financialYear = getFinancialYear(parsedDate);
+
+        let docType: InternalInvoiceRecord['documentType'] = undefined;
+
+        if (source === 'local') {
+            // --- Access Mode/Type from record.rawData ---
+            const rawData = record.rawData as { [key: string]: any } | undefined; // Cast rawData
+            let modeRaw: any = undefined;
+            let typeRaw: any = undefined;
+
+            if (rawData) { // Check if rawData exists
+                 // Access potential raw Mode/Type properties case-insensitively from rawData
+                 modeRaw = rawData['Mode'] ?? rawData['mode'] ?? rawData['Document Mode'] ?? rawData['document mode'];
+                 typeRaw = rawData['Type'] ?? rawData['type'] ?? rawData['Document Type'] ?? rawData['document type'] ?? rawData['Credit/Debit'] ?? rawData['credit/debit'];
+            } else {
+                 this.logger.warn(`Record ID ${record.id} missing rawData, cannot determine Mode/Type.`);
+            }
+            // --- End Access ---
+            const mode = typeof modeRaw === 'string' ? modeRaw.trim().toUpperCase() : undefined;
+            const type = typeof typeRaw === 'string' ? typeRaw.trim().toUpperCase() : undefined;
+
+            if (mode === 'B2B') {
+                docType = 'INV';
+            } else if (mode === 'CDNR') {
+                if (type === 'CREDIT') {
+                    docType = 'C'; // Local purchase / Sup CN = Credit Note context
+                } else if (type === 'DEBIT') {
+                    docType = 'D'; // Local return / Sup DN = Debit Note context
+                } else {
+                    // Mode is CDNR but Type is missing or invalid - Log warning
+                    this.logger.warn(`Record ID ${record.invoiceNumberRaw} has Mode='CDNR' but invalid/missing Type='${typeRaw}'. Cannot set documentType.`);
+                    // Decide if this makes the record invalid overall - handled in main loop
+                }
+            } else {
+                // Mode is missing or invalid for local data
+                this.logger.warn(`Local record ID ${record.invoiceNumberRaw} missing or invalid Mode ('${modeRaw}'). Document type not set from Mode/Type.`);
+                // Maybe infer from other data if possible, or leave undefined
+            }
+        } else { // Source is 'portal'
+            // Assign directly from parsed portal data (parser already sets this)
+            // Basic validation for portal type
+            const portalDocType = record.documentType;
+            if (portalDocType && ['INV', 'C', 'D'].includes(portalDocType)) {
+                docType = portalDocType as 'INV' | 'C' | 'D';
+            } else {
+                this.logger.warn(`Portal record ID ${record.id} has unexpected document type: ${portalDocType}`);
+            }
+        }
+        // --- End Conditional Mapping ---
 
         // Construct the final, fully typed object
         const finalRecord: InternalInvoiceRecord = {
@@ -136,6 +190,9 @@ export class ValidationService implements IValidationService {
             itcAvailable: record.itcAvailable,
             itcReason: record.itcReason,
             documentType: record.documentType,
+            supSource: record.supSource,
+            supfileDate: record.supfileDate,
+
         };
         return finalRecord;
     }

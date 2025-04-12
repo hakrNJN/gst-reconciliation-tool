@@ -92,7 +92,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'perfect':
                     supplierData.matches
                         ?.filter(m => m.status === 'MatchedPerfectly')
-                        .forEach(m => dataRows.push({ gstin, supplierName, ...m.localRecord })); // Use local/portal data
+                        .forEach(m => dataRows.push({
+                            gstin,
+                            supplierName,
+                            supfileDate: m.portalRecord.supfileDate,
+                            supSource: m.portalRecord.supSource,
+                            ...m.localRecord
+                        })); // Use local/portal data
                     break;
                 case 'tolerance':
                     supplierData.matches
@@ -101,14 +107,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             gstin, supplierName, ...m, // Spread match to get local/portal records and details
                             taxableDiff: (m.localRecord.taxableAmount - m.portalRecord.taxableAmount),
                             taxDiff: (m.localRecord.totalTax - m.portalRecord.totalTax)
-                         }));
+                        }));
                     break;
                 case 'mismatch':
-                     supplierData.mismatchedAmounts
+                    supplierData.mismatchedAmounts
                         ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
                     break;
                 case 'potential':
-                     supplierData.potentialMatches
+                    supplierData.potentialMatches
                         ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
                     break;
                 case 'missingPortal':
@@ -129,26 +135,29 @@ document.addEventListener('DOMContentLoaded', () => {
             // Create header row
             const trHead = document.createElement('tr');
             if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal') {
-                 headers = ['Supplier GSTIN', 'Supplier Name', 'Invoice No', 'Date', 'Taxable Amt', 'Total Tax', 'Invoice Value'];
-                 headers.forEach(h => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; trHead.appendChild(th); });
+                headers = ['Supplier GSTIN', 'Supplier Name', 'Invoice No', 'Date', 'Taxable Amt', 'Total Tax', 'Invoice Value',
+                    'Source', 'Filing Date'
+                ];
+                headers.forEach(h => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; trHead.appendChild(th); });
             } else if (category === 'tolerance' || category === 'mismatch' || category === 'potential') {
-                 headers = [
+                headers = [
                     'Supplier GSTIN', 'Supplier Name',
                     'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
                     'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
-                    'Taxable Diff', 'Tax Diff',
-                 ];
-                 // Add Tolerance Notes only for 'tolerance' category
-                 if (category === 'tolerance') headers.push('Tolerance Notes');
-                 headers.forEach(h => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; trHead.appendChild(th); });
+                    'Taxable Diff', 'Tax Diff'
+                ];
+                // Add Tolerance Notes only for 'tolerance' category
+                if (category === 'tolerance') headers.push('Tolerance Notes');
+                headers.forEach(h => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; trHead.appendChild(th); });
             }
-             resultsTableHead.appendChild(trHead);
+            resultsTableHead.appendChild(trHead);
 
 
             // Create data rows
             dataRows.forEach(rowData => {
                 const trBody = document.createElement('tr');
                 if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal') {
+                   
                     trBody.innerHTML = `
                         <td>${rowData.gstin ?? ''}</td>
                         <td>${rowData.supplierName ?? ''}</td>
@@ -157,15 +166,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${formatCurrency(rowData.taxableAmount)}</td>
                         <td>${formatCurrency(rowData.totalTax)}</td>
                         <td>${formatCurrency(rowData.invoiceValue)}</td>
+                        ${rowData.supSource !== 'undefined' ? `<td>${rowData.supSource}</td>` : ''}
+                        ${category === 'perfect' ? `<td>${formatDate(rowData.supfileDate)}</td>` : ''}
                     `;
                 } else if (category === 'tolerance' || category === 'mismatch' || category === 'potential') {
-                     const local = rowData.localRecord || {}; // Handle potential direct properties in mismatch
-                     const portal = rowData.portalRecord || {};
-                     const taxableDiff = rowData.taxableAmountDifference ?? rowData.taxableDiff ?? 0; // Use specific diff if available
-                     const taxDiff = rowData.totalTaxDifference ?? rowData.taxDiff ?? 0;
-                     const toleranceNotes = category === 'tolerance' ? (rowData.toleranceDetails ? Object.entries(rowData.toleranceDetails).filter(([k,v])=>v===true).map(([k])=>k).join('; ') : '') : ''; // Simplified notes
+                    const local = rowData.localRecord || {}; // Handle potential direct properties in mismatch
+                    const portal = rowData.portalRecord || {};
+                    const taxableDiff = rowData.taxableAmountDifference ?? rowData.taxableDiff ?? 0; // Use specific diff if available
+                    const taxDiff = rowData.totalTaxDifference ?? rowData.taxDiff ?? 0;
+                    const toleranceNotes = category === 'tolerance' ? (rowData.toleranceDetails ? Object.entries(rowData.toleranceDetails).filter(([k, v]) => v === true).map(([k]) => k).join('; ') : '') : ''; // Simplified notes
 
-                     trBody.innerHTML = `
+                    trBody.innerHTML = `
                         <td>${rowData.gstin ?? ''}</td>
                         <td>${rowData.supplierName ?? ''}</td>
                         <td>${local.invoiceNumberRaw ?? ''}</td>
@@ -204,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         resetResultsUI(); // Reset UI before starting
 
-        // (Validation for files and tolerances - as before)
+        // (Validation for files and tolerances )
         if (!localFileInput.files.length || !portalFileInput.files.length) { /* ... */ }
         const toleranceAmount = parseFloat(toleranceAmountInput.value); const toleranceTax = parseFloat(toleranceTaxInput.value);
         if (isNaN(toleranceAmount) || isNaN(toleranceTax) || toleranceAmount < 0 || toleranceTax < 0) { /* ... */ }
@@ -222,10 +233,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // formData.append('toleranceTax', toleranceTaxInput.value);
         // const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
         // formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
-
         try {
             const response = await fetch('/api/reconcile', { method: 'POST', body: formData });
-
+            
             if (response.ok) {
                 const results = await response.json();
                 currentResultsData = results; // Store results
@@ -233,18 +243,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 showStatus('Reconciliation successful! Select a category below to view details.', 'success');
                 resultsSection.classList.remove('visually-hidden'); // Show results section
                 exportButton.style.display = 'inline-block'; // Show export button (always available now)
-                 // Don't display table immediately, wait for selection
+                // Don't display table immediately, wait for selection
                 noResultsMessage.textContent = 'Select a category from the dropdown to view results.';
                 noResultsMessage.style.display = 'block';
 
 
-            } else { /* ... Error handling as before ... */
-                let errorMsg = `HTTP Error: ${response.status} ${response.statusText}`; try { const errorData = await response.json(); errorMsg = `Error: ${errorData.message || errorMsg}`; } catch (e) {} showStatus(errorMsg, 'danger');
+            } else { /* ... Error handling... */
+                let errorMsg = `HTTP Error: ${response.status} ${response.statusText}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = `Error: ${errorData.message || errorMsg}`;
+                } catch (e) { }
+                showStatus(errorMsg, 'danger');
             }
-        } catch (error) { /* ... Network error handling as before ... */
-             console.error('Fetch error:', error); showStatus(`Network or client-side error: ${error.message}`, 'danger');
+        } catch (error) { /* ... Network error handling... */
+            console.error('Fetch error:', error);
+            showStatus(`Network or client-side error: ${error.message}`, 'danger');
+            resultsArea.innerHTML = '<p class="text-danger">An error occurred.</p>';
         } finally {
-            submitButton.disabled = false; submitSpinner.style.display = 'none';
+            submitButton.disabled = false;
+            submitSpinner.style.display = 'none';
         }
     });
 
@@ -254,36 +272,82 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedCategory) {
             displayTableData(selectedCategory);
         } else {
-             // Optionally clear table if '-- Select Category --' is chosen
-             resultsTableContainer.classList.add('visually-hidden');
-             resultsTableHead.innerHTML = '';
-             resultsTableBody.innerHTML = '';
-             tableCaption.textContent = '';
-             noResultsMessage.textContent = 'Select a category from the dropdown to view results.';
-             noResultsMessage.style.display = 'block';
+            // Optionally clear table if '-- Select Category --' is chosen
+            resultsTableContainer.classList.add('visually-hidden');
+            resultsTableHead.innerHTML = '';
+            resultsTableBody.innerHTML = '';
+            tableCaption.textContent = '';
+            noResultsMessage.textContent = 'Select a category from the dropdown to view results.';
+            noResultsMessage.style.display = 'block';
         }
     });
 
-    // Export Button Click Listener (remains the same logic)
-     // (Export button handler remains the same as before)
-    exportButton.addEventListener('click', async () => {
-         if (!currentResultsData) { showExportStatus('No results data available to export.', 'warning'); return; }
-         showExportStatus('Generating export...', 'info');
-         exportButton.disabled = true; exportSpinner.style.display = 'inline-block';
-         try {
-             const response = await fetch('/api/reconcile/export', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(currentResultsData) });
-             if (response.ok) {
-                 const blob = await response.blob();
-                 const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
-                 const disposition = response.headers.get('content-disposition'); let filename = 'reconciliation-report.xlsx';
-                 if (disposition?.includes('filename=')) { const fnMatch = disposition.match(/filename="?(.+)"?/i); if (fnMatch?.[1]) filename = fnMatch[1]; }
-                 a.download = filename; document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); a.remove();
-                 showExportStatus('Report downloaded successfully.', 'success');
-             } else {
-                 let errorMsg = `Export failed: ${response.status} ${response.statusText}`; try { const errData = await response.json(); errorMsg = `Error: ${errData.message || errorMsg}`; } catch(e){} showExportStatus(errorMsg, 'danger');
-             }
-         } catch (error) { console.error('Export fetch error:', error); showExportStatus(`Network or client-side error during export: ${error.message}`, 'danger');
-         } finally { exportButton.disabled = false; exportSpinner.style.display = 'none'; }
-    });
+    // Export Button Click Listener
+   exportButton.addEventListener('click', async () => {
+    if (!currentResultsData) { 
+        showExportStatus('No results data available to export.', 'warning');
+        return;
+    }
+    
+    showExportStatus('Generating export...', 'info');
+    exportButton.disabled = true;
+    exportSpinner.style.display = 'inline-block';
+    
+    try {
+        const response = await fetch('/api/reconcile/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentResultsData)
+        });
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            
+            const disposition = response.headers.get('content-disposition');
+            let filename = 'reconciliation-report.xlsx';
+            
+            if (disposition?.includes('filename=')) {
+                const fnMatch = disposition.match(/filename=["']?([^"';\n]+)["']?/i);
+                if (fnMatch?.[1]) {
+                    filename = fnMatch[1].trim();
+                    // Ensure filename has proper extension
+                    if (!filename.toLowerCase().endsWith('.xlsx')) {
+                        filename += '.xlsx';
+                    }
+                }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+            
+            showExportStatus('Report downloaded successfully.', 'success');
+        } else {
+            let errorMsg = `Export failed: ${response.status} ${response.statusText}`;
+            
+            try {
+                const errData = await response.json();
+                errorMsg = `Error: ${errData.message || errorMsg}`;
+            } catch (e) {
+                // JSON parsing failed, using default error message
+            }
+            
+            showExportStatus(errorMsg, 'danger');
+        }
+    } catch (error) {
+        console.error('Export fetch error:', error);
+        showExportStatus(`Network or client-side error during export: ${error.message}`, 'danger');
+    } finally {
+        exportButton.disabled = false;
+        exportSpinner.style.display = 'none';
+    }
+});
 
 }); // End DOMContentLoaded

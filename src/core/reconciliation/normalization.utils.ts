@@ -31,8 +31,6 @@ export function checkInvoiceSimilarity(
     const str1 = String(inv1).trim().toUpperCase();
     const str2 = String(inv2).trim().toUpperCase();
 
-    console.log(`Comparing: ${str1} vs ${str2}`);
-
     if (str1 === str2) return null; // Not needed if they are identical raw
 
     // 1. Check numeric parts

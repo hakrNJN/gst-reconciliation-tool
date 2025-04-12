@@ -10,6 +10,7 @@ import { AppError, FileParsingError } from '../common/errors';
 import { InternalInvoiceRecord } from '../common/interfaces/models';
 import { FileParsingOptions, IFileParserService } from './interfaces/services';
 // Import normalization utils - needed to populate derived fields consistently
+import { parsePortalDate } from '../common/utils';
 import { getCanonicalMonthYear, normalizeInvoiceNumber } from '../reconciliation/normalization.utils';
 
 // --- Header map for Excel remains the same ---
@@ -24,30 +25,9 @@ const EXCEL_HEADER_MAP: { [key: string]: keyof Partial<InternalInvoiceRecord> } 
     'central tax amount': 'cgst', 'cgst amount': 'cgst', 'cgst': 'cgst',
     'state tax amount': 'sgst', 'sgst amount': 'sgst', 'sgst': 'sgst',
     'total tax amount': 'totalTax', 'total tax': 'totalTax',
+    
 };
 
-/** Helper to parse DD-MM-YYYY date strings */
-function parsePortalDate(dateStr: string | undefined | null): Date | null {
-    if (!dateStr) return null;
-    // Simple check for DD-MM-YYYY format
-    const match = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-    if (match) {
-        // Note: Month in JS Date is 0-indexed (0-11), so subtract 1
-        const date = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
-        // Basic validation: Check if the parsed date components match the input string parts
-        // This helps catch invalid dates like 32-13-2024 that Date might parse leniently
-        if (date.getFullYear() === Number(match[3]) &&
-            date.getMonth() === Number(match[2]) - 1 &&
-            date.getDate() === Number(match[1])) {
-            // Set time to midday UTC to avoid timezone shifts affecting the date part
-            date.setUTCHours(12, 0, 0, 0);
-            return date;
-        }
-    }
-    // Log warning or return null if format is wrong or date is invalid
-    // console.warn(`Could not parse portal date format: ${dateStr}`);
-    return null;
-}
 
 
 @singleton()
@@ -124,7 +104,8 @@ export class FileParserService implements IFileParserService {
             const partialRecord: Partial<InternalInvoiceRecord> = {
                 id: uuidv4(),
                 originalLineNumber: index + 2, // Header is row 1
-                source: 'local'
+                source: 'local',
+                rawData: row
             };
             for (const header in row) {
                 const normalizedHeader = header.trim().toLowerCase();
@@ -135,9 +116,6 @@ export class FileParserService implements IFileParserService {
                     (partialRecord as any)[mappedKey] = row[header];
                 }
             }
-           // Remove calculations previously done here, move to standardize
-           // if (partialRecord.totalTax === undefined && ...) { ... }
-           // if(partialRecord.invoiceValue === undefined && ...) { ... }
 
             return partialRecord;
         }).filter(r => Object.keys(r).length > 3);
@@ -190,7 +168,7 @@ export class FileParserService implements IFileParserService {
                     const sgst = Number(invoice.sgst ?? 0);
                     const taxableAmount = Number(invoice.txval ?? 0);
                     const totalTax = parseFloat((igst + cgst + sgst).toFixed(2)); // Calculate and round
-
+                    
                     const partialRecord: Partial<InternalInvoiceRecord> = {
                         id: uuidv4(),
                         source: 'portal',
@@ -213,7 +191,9 @@ export class FileParserService implements IFileParserService {
                         reverseCharge: invoice.rev === 'Y',
                         itcAvailable: invoice.itcavl === 'Y',
                         itcReason: invoice.rsn,
-                        documentType: 'INV' // Mark as Invoice
+                        documentType: 'INV', // Mark as Invoice
+                        supfileDate: parsePortalDate(supplierEntry.supfildt ||''),
+                        supSource: invoice.srctyp ||'',
                     };
                     records.push(partialRecord);
                 }
@@ -274,7 +254,9 @@ export class FileParserService implements IFileParserService {
                         reverseCharge: note.rev === 'Y',
                         itcAvailable: note.itcavl === 'Y',
                         itcReason: note.rsn,
-                        documentType: 'INV' // Mark as Invoice
+                        documentType: 'INV', // Mark as Invoice
+                        supfileDate:parsePortalDate(supplierEntry.supfildt ||''),
+                        supSource: note.srctyp||'',
                     };
                     records.push(partialRecord);
                 }

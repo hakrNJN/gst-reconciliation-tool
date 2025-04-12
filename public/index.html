@@ -10,7 +10,7 @@
       integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
       crossorigin="anonymous"
     />
-  
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="container mt-4">
@@ -30,7 +30,11 @@
               <div class="col-md-6">
                 <label for="localFile" class="form-label">
                   1. Local Purchase Data (Excel/JSON) -
-                  <a href="Purchase Data Sample.xlsx" download="Purchase Data Sample.xlsx" title="Download sample local purchase data format">
+                  <a
+                    href="Purchase Data Sample.xlsx"
+                    download="Purchase Data Sample.xlsx"
+                    title="Download sample local purchase data format"
+                  >
                     Sample File
                   </a>
                 </label>
@@ -61,113 +65,160 @@
             <hr />
 
             <!-- 2. Reconciliation options horizontally stacked -->
-            <div class="row g-3 align-items-stretch mb-3"> 
-            <!-- Card 1: Tolerance Options -->
-            <div class="col-md-6 col-lg-3">
-              <div class="card h-100 card-min-height"> 
-                <div class="card-body d-flex flex-column"> 
-                  <h6 class="card-subtitle mb-2 text-muted">Amont Tolerance</h6>
-                  <div class="row g-2 flex-grow-1">
-                    <div class="col-6">
-                      <label for="toleranceAmount" class="form-label" style="font-size: 0.85em;">Taxable Amount</label>
+            <div class="row g-3 align-items-stretch mb-3">
+              <!-- Card 1: Tolerance Options -->
+              <div class="col-md-6 col-lg-3">
+                <div class="card h-100 card-min-height">
+                  <div class="card-body d-flex flex-column">
+                    <h6 class="card-subtitle mb-2 text-muted">
+                      Amont Tolerance
+                    </h6>
+                    <div class="row g-2 flex-grow-1">
+                      <div class="col-6">
+                        <label
+                          for="toleranceAmount"
+                          class="form-label"
+                          style="font-size: 0.85em"
+                          >Taxable Amount</label
+                        >
+                        <input
+                          type="number"
+                          class="form-control form-control-sm"
+                          id="toleranceAmount"
+                          name="toleranceAmount"
+                          value="5.00"
+                          step="0.01"
+                          required
+                        />
+                      </div>
+                      <div class="col-6">
+                        <label
+                          for="toleranceTax"
+                          class="form-label"
+                          style="font-size: 0.85em"
+                          >Tax Amount</label
+                        >
+                        <input
+                          type="number"
+                          class="form-control form-control-sm"
+                          id="toleranceTax"
+                          name="toleranceTax"
+                          value="1.00"
+                          step="0.01"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 2: Date Matching Options -->
+              <div class="col-md-6 col-lg-3">
+                <div class="card h-100 card-min-height">
+                  <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">
+                      Date Tolerance
+                    </h6>
+                    <div class="form-check">
                       <input
-                        type="number"
-                        class="form-control form-control-sm"
-                        id="toleranceAmount"
-                        name="toleranceAmount"
-                        value="5.00"
-                        step="0.01"
-                        required
+                        class="form-check-input"
+                        type="radio"
+                        name="dateMatchStrategy"
+                        id="dateMatchMonth"
+                        value="month"
+                        checked
                       />
+                      <label class="form-check-label" for="dateMatchMonth"
+                        >This Month Only</label
+                      >
                     </div>
-                    <div class="col-6">
-                      <label for="toleranceTax" class="form-label" style="font-size: 0.85em;">Tax Amount</label>
+                    <div class="form-check">
                       <input
-                        type="number"
-                        class="form-control form-control-sm"
-                        id="toleranceTax"
-                        name="toleranceTax"
-                        value="1.00"
-                        step="0.01"
-                        required
+                        class="form-check-input"
+                        type="radio"
+                        name="dateMatchStrategy"
+                        id="dateMatchFY"
+                        value="fy"
                       />
+                      <label class="form-check-label" for="dateMatchFY"
+                        >Entire Financial Year</label
+                      >
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-             <!-- Card 2: Date Matching Options -->
-             <div class="col-md-6 col-lg-3">
-              <div class="card h-100 card-min-height">
-                <div class="card-body">
-                  <h6 class="card-subtitle mb-2 text-muted">Date Tolerance</h6>
-                  <div class="form-check">
-                    <input
-                      class="form-check-input"
-                      type="radio"
-                      name="dateMatchStrategy"
-                      id="dateMatchMonth"
-                      value="month"
-                      checked
-                    />
-                    <label class="form-check-label" for="dateMatchMonth"
-                      >This Month Only</label
+              <!-- Card 3: Reconciliation Scope Options -->
+              <div class="col-md-6 col-lg-3">
+                <div class="card h-100 card-min-height">
+                  <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">
+                      Reconciliation Scope
+                    </h6>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="reconciliationScope"
+                        id="scopeAll"
+                        value="all"
+                        checked
+                      />
+                      <label class="form-check-label" for="scopeAll"
+                        >All Invoices</label
+                      >
+                    </div>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="reconciliationScope"
+                        id="scopeB2B"
+                        value="b2b"
+                      />
+                      <label class="form-check-label" for="scopeB2B"
+                        >B2B Only</label
+                      >
+                    </div>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="reconciliationScope"
+                        id="scopeCDNR"
+                        value="cdnr"
+                      />
+                      <label class="form-check-label" for="scopeCDNR"
+                        >CDNR Only</label
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 4: Submit Button -->
+              <div class="col-md-6 col-lg-3">
+                <div class="card h-100 card-min-height">
+                  <div
+                    class="card-body d-flex align-items-center justify-content-center"
+                  >
+                    <button
+                      type="submit"
+                      id="submitButton"
+                      class="btn btn-primary w-100"
                     >
-                  </div>
-                  <div class="form-check">
-                    <input
-                      class="form-check-input"
-                      type="radio"
-                      name="dateMatchStrategy"
-                      id="dateMatchFY"
-                      value="fy"
-                    />
-                    <label class="form-check-label" for="dateMatchFY"
-                      >Entire Financial Year</label
-                    >
+                      <span
+                        class="spinner-border spinner-border-sm"
+                        role="status"
+                        aria-hidden="true"
+                        style="display: none"
+                      ></span>
+                      Reconcile
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
-
-            <!-- Card 3: Reconciliation Scope Options -->
-            <div class="col-md-6 col-lg-3">
-              <div class="card h-100 card-min-height">
-                 <div class="card-body">
-                   <h6 class="card-subtitle mb-2 text-muted">Reconciliation Scope</h6>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeAll" value="all" checked>
-                        <label class="form-check-label" for="scopeAll">All Invoices</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeB2B" value="b2b">
-                        <label class="form-check-label" for="scopeB2B">B2B Only</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="reconciliationScope" id="scopeCDNR" value="cdnr">
-                        <label class="form-check-label" for="scopeCDNR">CDNR Only</label>
-                    </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Card 4: Submit Button -->
-            <div class="col-md-6 col-lg-3">
-              <div class="card h-100 card-min-height">
-                 <div class="card-body d-flex align-items-center justify-content-center"> 
-                     <button type="submit" id="submitButton" class="btn btn-primary w-100"> 
-                       <span
-                         class="spinner-border spinner-border-sm"
-                         role="status"
-                         aria-hidden="true"
-                         style="display: none"
-                       ></span>
-                       Reconcile
-                     </button>
-                 </div>
-             </div>
-           </div>
             </div>
           </form>
         </div>
@@ -180,41 +231,43 @@
       <!-- Update the results section to properly position and style the export button -->
       <section id="results-section" class="visually-hidden">
         <hr />
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">Reconciliation Results</h5>
-          <button
-            id="exportButton"
-            class="btn btn-success"
-            style="display: none"
-          >
-            <span
-              class="spinner-border spinner-border-sm me-1"
-              role="status"
-              aria-hidden="true"
-              style="display: none"
-            ></span>
-            Export Full Results (Excel)
-          </button>
-        </div>
-
-        <div class="mb-3">
-          <label for="resultsCategorySelect" class="form-label"
-            >View Results For:</label
-          >
-          <select class="form-select" id="resultsCategorySelect">
-            <option selected disabled value="">-- Select Category --</option>
-            <option value="perfect">Perfectly Matched Records</option>
-            <option value="tolerance">Matched with Tolerance</option>
-            <option value="mismatch">Mismatched Amounts</option>
-            <option value="potential">Potential Match</option>
-            <option value="missingPortal">Missing in Portal (GSTR-2B)</option>
-            <option value="missingLocal">Missing in Local Books</option>
-          </select>
+        <div class="row align-items-center mb-3">
+          <!-- Left aligned text -->
+          <div class="col-md-4 text-md-start">
+            <h5 class="mb-0">Reconciliation Results</h5>
+          </div>
+          
+          <!-- Centered select with label on left -->
+          <div class="col-md-4 d-flex justify-content-md-center align-items-center">
+            <label for="resultsCategorySelect" class="me-2 mb-0 flex-shrink-0">View Results For:</label>
+            <select class="form-select" id="resultsCategorySelect">
+              <option selected disabled value="">-- Select Category --</option>
+              <option value="perfect">Perfectly Matched Records</option>
+              <option value="tolerance">Matched with Tolerance</option>
+              <option value="mismatch">Mismatched Amounts</option>
+              <option value="potential">Potential Match</option>
+              <option value="missingPortal">Missing in Portal (GSTR-2B)</option>
+              <option value="missingLocal">Missing in Local Books</option>
+            </select>
+          </div>
+          
+          <!-- Right aligned button -->
+          <div class="col-md-4 d-flex justify-content-md-end">
+            <button id="exportButton" class="btn btn-success"style="display: none" >
+              <span
+                class="spinner-border spinner-border-sm me-1"
+                role="status"
+                aria-hidden="true"
+                style="display: none"
+              ></span>
+              Export Full Results (Excel)
+            </button>
+          </div>
         </div>
 
         <div
           id="resultsTableContainer"
-          class="table-responsive visually-hidden"
+          class="visually-hidden fixed-height-table-container"
         >
           <p><strong id="tableCaption"></strong></p>
           <table

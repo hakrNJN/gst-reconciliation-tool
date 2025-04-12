@@ -7,34 +7,6 @@ body {
 #exportStatusArea {
   margin-top: 1rem;
 }
-#resultsTable {
-  width: 100%;
-  table-layout: auto; /* Allow table to adjust column widths based on content */
-  max-height: 100px; /* Set a fixed max height, adjust as needed */
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: auto; /* Enable horizontal scrolling if needed */
-}
-
-/* Table cell styling */
-#resultsTable td,
-#resultsTable th {
-  font-size: 0.85rem;
-  padding: 0.5rem;
-  white-space: nowrap; /* Prevent text wrapping by default */
-}
-
-/* Apply to columns that should wrap */
-/* #resultsTable .wrap-text {
-  white-space: normal !important;
-} */
-
-
-/* Make export button clearly positioned below table */
-#exportButton {
-  display: block;
-  margin: 20px auto;
-  min-width: 200px;
-}
 
 /* Visually hidden class */
 .visually-hidden {
@@ -47,57 +19,58 @@ body {
   white-space: nowrap;
 }
 
-/* Override for making sections visible */
-section:not(.visually-hidden),
-#noResultsMessage:not(.visually-hidden) {
-  /* Apply generic visibility overrides */
-  position: static !important;
-  height: auto;
-  width: auto;
-  overflow: visible; /* OK for general sections/messages */
-  clip: auto;
-  white-space: normal;
+/* Card minimum height for consistent appearance */
+.card-min-height {
+  min-height: 150px;
 }
 
-/* Specific override for the table container to allow its overflow rules to work */
-#resultsTableContainer:not(.visually-hidden) {
-  position: static !important;
-  height: auto; /* Allow height to be controlled by max-height */
-  width: auto; /* Allow width to be controlled by container/bootstrap */
-  overflow: inherit; /* Let the .table-responsive style handle overflow */
-  /* OR simply rely on .table-responsive styles and don't set overflow here */
-  clip: auto;
-  white-space: normal;
-}
-
-/* --- Keep your other styles --- */
-
-/* Table container styling (This is where overflow is set correctly) */
-.table-responsive {
-  max-height: 400px; /* Set a fixed max height */
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: auto; /* Enable horizontal scrolling if needed */
+/* Fixed height table container with scrolling */
+.fixed-height-table-container {
+  height: 400px;
+  overflow-y: auto;
+  overflow-x: auto;
   width: 100%;
   margin-bottom: 20px;
+  border: 1px solid #dee2e6;
 }
 
 /* Table styling */
 #resultsTable {
   width: 100%;
   table-layout: auto;
+  margin-bottom: 0;
 }
+
+/* Table cell styling */
 #resultsTable td,
 #resultsTable th {
   font-size: 0.85rem;
-  white-space: nowrap;
+  padding: 0.5rem;
+  white-space: nowrap; /* Prevent text wrapping by default */
 }
+
+/* Apply to columns that should wrap */
 .wrap-text {
   white-space: normal !important;
 }
 
+/* Make the table header sticky while scrolling */
+.fixed-height-table-container thead {
+  position: sticky;
+  top: 0;
+  background-color: #fff;
+  z-index: 1;
+  border-bottom: 2px solid #dee2e6;
+}
+
+/* Make export button styling */
+#exportButton {
+  display: block;
+  min-width: 200px;
+}
+
 /* Override for making sections visible */
 section:not(.visually-hidden),
-#resultsTableContainer:not(.visually-hidden),
 #noResultsMessage:not(.visually-hidden) {
   position: static !important;
   height: auto;
@@ -105,4 +78,25 @@ section:not(.visually-hidden),
   overflow: visible;
   clip: auto;
   white-space: normal;
+}
+
+/* Specific override for the table container */
+#resultsTableContainer:not(.visually-hidden) {
+  position: static !important;
+  width: auto;
+  clip: auto;
+  white-space: normal;
+  /* Height and overflow handled by fixed-height-table-container class */
+}
+
+/* Hover effect for table rows */
+#resultsTable tbody tr:hover {
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+/* Table container responsive behaviors */
+@media (max-width: 768px) {
+  .fixed-height-table-container {
+    height: 300px; /* Smaller height on mobile devices */
+  }
 }
