@@ -20,6 +20,7 @@ export interface InternalInvoiceRecord {
     date: Date | null;
     /** Canonical representation of month and year (e.g., "YYYY-MM") */
     dateMonthYear: string;  //(will be set later)
+    dateQuarter: string; // (will be set later)
     /** Taxable value (value before tax) */
     taxableAmount: number; 
     /** Integrated Goods and Services Tax amount */
@@ -84,7 +85,7 @@ export interface ReconciliationMismatch {
 export interface ReconciliationPotentialMatch {
     readonly localRecord: Readonly<InternalInvoiceRecord>;
     readonly portalRecord: Readonly<InternalInvoiceRecord>;
-    readonly similarityMethod?: 'Numeric' | 'Levenshtein'; // Indicate how similarity was found
+    readonly similarityMethod?: 'Numeric' | 'Levenshtein' | 'None'; // Indicate how similarity was found
     readonly similarityScore?: number; // e.g., Levenshtein distance
 }
 /**

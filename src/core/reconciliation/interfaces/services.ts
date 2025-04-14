@@ -5,7 +5,7 @@ import { InternalInvoiceRecord, ReconciliationResults } from '../../common/inter
 export interface ReconciliationOptions {
     toleranceAmount?: number;
     toleranceTax?: number;
-    dateMatchStrategy?: 'month' | 'fy';
+    dateMatchStrategy?: 'month' | 'fy'| 'quarter';
     reconciliationScope?: 'all' | 'b2b'|'cdnr'; // Full reconciliation or just a summary
     // Add other potential options here
 }

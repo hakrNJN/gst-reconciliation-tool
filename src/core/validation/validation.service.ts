@@ -9,6 +9,7 @@ import { ValidationError } from '../common/errors';
 import {
     excelSerialDateToJSDate,
     getCanonicalMonthYear,
+    getFinancialQuarter,
     getFinancialYear,
     normalizeInvoiceNumber,
     parseDateString
@@ -115,6 +116,7 @@ export class ValidationService implements IValidationService {
 
         const dateMonthYear = getCanonicalMonthYear(parsedDate);
         const financialYear = getFinancialYear(parsedDate);
+        const financialQuarter = getFinancialQuarter(parsedDate);
 
         let docType: InternalInvoiceRecord['documentType'] = undefined;
 
@@ -177,6 +179,7 @@ export class ValidationService implements IValidationService {
             date: parsedDate, // Assign valid Date object or null
             dateMonthYear: dateMonthYear,
             financialYear: financialYear,
+            dateQuarter:financialQuarter,
             taxableAmount: taxableAmountNum,
             igst: igstNum,
             cgst: cgstNum,

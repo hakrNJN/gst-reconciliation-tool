@@ -15,35 +15,36 @@ function extractNumericPart(str: string | null | undefined): string {
 
 /**
  * Checks if two invoice numbers are potentially similar.
+ * Always returns a similarity assessment rather than null for potential matches.
  * @param inv1 Raw invoice number 1
  * @param inv2 Raw invoice number 2
  * @param threshold Levenshtein distance threshold (e.g., 2)
- * @returns Object indicating similarity and method/score, or null if not similar.
+ * @returns Object indicating similarity method and score.
  */
 export function checkInvoiceSimilarity(
     inv1: string | null | undefined,
     inv2: string | null | undefined,
     threshold: number = 2 // Default Levenshtein threshold
-): { method: 'Numeric' | 'Levenshtein'; score: number } | null {
+): { method: 'Numeric' | 'Levenshtein' | 'None'; score: number } {
 
-    if (!inv1 || !inv2) return null;
+    if (!inv1 || !inv2) return { method: 'None', score: Infinity };
 
     const str1 = String(inv1).trim().toUpperCase();
     const str2 = String(inv2).trim().toUpperCase();
 
-    if (str1 === str2) return null; // Not needed if they are identical raw
+    if (str1 === str2) return { method: 'None', score: 0 }; // Perfect match (handled elsewhere)
 
     // 1. Check numeric parts
     const num1 = extractNumericPart(str1);
     const num2 = extractNumericPart(str2);
     if (num1 && num1 === num2 && num1.length > 2) { // Ensure numeric part is somewhat significant
         // Check if non-numeric parts are short/ignorable (simple check)
-         const nonNum1 = str1.replace(num1, '');
-         const nonNum2 = str2.replace(num2, '');
-         // Allow if non-numeric parts are very short or mostly non-alphanumeric
-         if (nonNum1.replace(/[^A-Z]/g, '').length <= 3 && nonNum2.replace(/[^A-Z]/g, '').length <= 3) {
+        const nonNum1 = str1.replace(num1, '');
+        const nonNum2 = str2.replace(num2, '');
+        // Allow if non-numeric parts are very short or mostly non-alphanumeric
+        if (nonNum1.replace(/[^A-Z]/g, '').length <= 3 && nonNum2.replace(/[^A-Z]/g, '').length <= 3) {
             return { method: 'Numeric', score: 0 }; // Score 0 for numeric match
-         }
+        }
     }
 
     // 2. Check Levenshtein distance on cleaned strings
@@ -56,17 +57,17 @@ export function checkInvoiceSimilarity(
         return { method: 'Levenshtein', score: distance };
     }
 
-    // (Optional: Could add substring check here if desired)
-    // if (str1.includes(str2) || str2.includes(str1)) { ... }
-
-    return null; // Not similar enough
+    // Return a high score for dissimilar invoices - still usable for potential matches
+    // where date and amount match but invoice numbers are very different
+    return { method: 'None', score: distance };
 }
 
 /**
- * Determines the Indian Financial Year (e.g., "2023-24") for a given date.
- * FY runs from April 1st to March 31st.
+ * Gets the financial year string (YY-YY) from a Date object.
+ * Financial year spans from April 1st to March 31st of the next year.
+ * 
  * @param date - The input Date object.
- * @returns A string representing the financial year, or empty string if date is invalid.
+ * @returns A string in "YY-YY" format (e.g., "23-24"), or an empty string if the input is invalid.
  */
 export function getFinancialYear(date: Date | null | undefined): string {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
@@ -139,6 +140,51 @@ export function getCanonicalMonthYear(date: Date | null | undefined): string {
     return `${year}-${monthString}`;
 }
 
+/**
+ * Gets the financial quarter string (YYYY-QN) from a Date object.
+ * Financial quarters are defined as:
+ * - Q1: April - June
+ * - Q2: July - September
+ * - Q3: October - December
+ * - Q4: January - March
+ * 
+ * @param date - The input Date object.
+ * @returns A string in "YYYY-QN" format (e.g., "2023-Q1"), or an empty string if the input is invalid.
+ */
+export function getFinancialQuarter(date: Date | null | undefined): string {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        return ''; // Return empty for invalid dates
+    }
+
+    const month = date.getMonth() + 1; // getMonth() is 0-indexed
+    const year = date.getFullYear();
+
+    let financialYear: number;
+    let quarter: number;
+
+    // Determine financial year and quarter
+    if (month >= 4 && month <= 6) {
+        // April to June = Q1
+        quarter = 1;
+        financialYear = year;
+    } else if (month >= 7 && month <= 9) {
+        // July to September = Q2
+        quarter = 2;
+        financialYear = year;
+    } else if (month >= 10 && month <= 12) {
+        // October to December = Q3
+        quarter = 3;
+        financialYear = year;
+    } else {
+        // January to March = Q4
+        quarter = 4;
+        financialYear = year - 1; // This belongs to previous year's financial year
+    }
+
+    return `${financialYear}-Q${quarter}`;
+}
+
+
 export function parseDateString(dateStr: string | undefined | null): Date | null {
     // Handles DD-MM-YYYY format specifically
     if (!dateStr) return null;
@@ -149,12 +195,12 @@ export function parseDateString(dateStr: string | undefined | null): Date | null
         const year = parseInt(match[3], 10);
         // Basic validity check
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-             const date = new Date(year, month - 1, day); // Month is 0-based for Date constructor
-             // Final check if the constructed date is valid and matches input parts
-             if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-                 date.setUTCHours(12, 0, 0, 0); // Set UTC noon
-                 return date;
-             }
+            const date = new Date(year, month - 1, day); // Month is 0-based for Date constructor
+            // Final check if the constructed date is valid and matches input parts
+            if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+                date.setUTCHours(12, 0, 0, 0); // Set UTC noon
+                return date;
+            }
         }
     }
     return null; // Return null if format is wrong or date is invalid
@@ -194,14 +240,14 @@ export function excelSerialDateToJSDate(serial: number | string | null | undefin
     }
 
     // Return date set to UTC noon to avoid timezone issues affecting the date part
-     // We need to adjust for the local timezone offset when setting UTC noon
-     const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
-     const utcNoonDate = new Date(date.getTime() + timezoneOffsetMs + (12 * 60 * 60 * 1000));
+    // We need to adjust for the local timezone offset when setting UTC noon
+    const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
+    const utcNoonDate = new Date(date.getTime() + timezoneOffsetMs + (12 * 60 * 60 * 1000));
 
-     // Final check if UTC date is valid (sometimes edge cases fail)
-     if (isNaN(utcNoonDate.getTime())) {
+    // Final check if UTC date is valid (sometimes edge cases fail)
+    if (isNaN(utcNoonDate.getTime())) {
         return date; // Return original parsed date if UTC conversion fails
-     }
+    }
 
     return utcNoonDate;
 }

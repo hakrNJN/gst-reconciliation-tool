@@ -66,7 +66,7 @@ export class ReconcileController {
             const effectiveToleranceAmount = (!isNaN(toleranceAmount) && toleranceAmount >= 0) ? toleranceAmount : config.reconciliation.toleranceAmount;
             const toleranceTax = parseFloat(rawToleranceTax);
             const effectiveToleranceTax = (!isNaN(toleranceTax) && toleranceTax >= 0) ? toleranceTax : config.reconciliation.toleranceTax;
-            const effectiveDateStrategy: 'month' | 'fy' = (rawDateStrategy === 'fy' || rawDateStrategy === 'month') ? rawDateStrategy : 'month';
+            const effectiveDateStrategy: 'month' | 'fy' | 'quarter' = (rawDateStrategy === 'fy'|| rawDateStrategy === 'quarter' || rawDateStrategy === 'month') ? rawDateStrategy : 'month';
             const effectiveScope: 'all' | 'b2b' | 'cdnr' = (rawScope === 'b2b' || rawScope === 'cdnr') ? rawScope : 'all';
             
             const options: ReconciliationOptions = {
