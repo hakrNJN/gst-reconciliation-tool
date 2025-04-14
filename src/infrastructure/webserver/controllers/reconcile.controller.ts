@@ -4,7 +4,7 @@ import 'reflect-metadata';
 import { container, inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 import config from '../../../config';
-import { ValidationError } from '../../../core/common/errors';
+import { AppError, ValidationError } from '../../../core/common/errors';
 import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationPotentialMatch, ReconciliationResults } from '../../../core/common/interfaces/models';
 import { FileParserService } from '../../../core/parsing'; // Import concrete class for DI token or use interface token
 import { ReconciliationOptions, ReconciliationService } from '../../../core/reconciliation'; // Import concrete class
@@ -34,52 +34,41 @@ export class ReconcileController {
         this.logger.info('ReconcileController initialized.');
     }
 
-    /**
-     * Handles file uploads, parsing, and initiates reconciliation.
+     /**
+     * Handles uploads of multiple local and portal files,
+     * parsing, validation, standardization, and initiates reconciliation.
      */
-    public handleUploadAndReconcile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+     public handleUploadAndReconcile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         this.logger.info('Received request to reconcile uploaded files.');
         try {
+            // 1. --- Validate File Uploads ---
             const files = req.files as UploadedFiles | undefined;
-
-            // 1. Validate File Uploads
-            if (!files || !files.localData?.[0] || !files.portalData?.[0]) {
-                throw new ValidationError('Both "localData" and "portalData" files are required.');
+            if (!files || !files.localData || files.localData.length === 0) {
+                throw new ValidationError('At least one Local Purchase Data file ("localData") is required.');
             }
-            const localFile = files.localData[0];
-            const portalFile = files.portalData[0];
+            if (!files.portalData || files.portalData.length === 0) {
+                throw new ValidationError('At least one Portal Data file ("portalData") is required.');
+            }
 
-            this.logger.info(`Processing local file: ${localFile.originalname} (${(localFile.size / 1024).toFixed(2)} KB)`);
-            this.logger.info(`Processing portal file: ${portalFile.originalname} (${(portalFile.size / 1024).toFixed(2)} KB)`);
+            const localFiles = files.localData;
+            const portalFiles = files.portalData;
 
-            // --- 1b. Extract and Validate Options from req.body ---
-            // Non-file fields from FormData are typically available in req.body
+            this.logger.info(`Received ${localFiles.length} local file(s) and ${portalFiles.length} portal file(s).`);
+            localFiles.forEach((file, i) => this.logger.debug(`Local file ${i+1}: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`));
+            portalFiles.forEach((file, i) => this.logger.debug(`Portal file ${i+1}: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`));
+
+            // 2. --- Extract and Validate Options ---
             const { toleranceAmount: rawToleranceAmount,
                 toleranceTax: rawToleranceTax,
                 dateMatchStrategy: rawDateStrategy,
-                reconciliationScope: rawScope
-            } = req.body;
-
-            // Validate and parse tolerances, using config defaults if invalid/missing
+                reconciliationScope: rawScope } = req.body;
             const toleranceAmount = parseFloat(rawToleranceAmount);
-            const effectiveToleranceAmount = (!isNaN(toleranceAmount) && toleranceAmount >= 0)
-                ? toleranceAmount
-                : config.reconciliation.toleranceAmount;
-
+            const effectiveToleranceAmount = (!isNaN(toleranceAmount) && toleranceAmount >= 0) ? toleranceAmount : config.reconciliation.toleranceAmount;
             const toleranceTax = parseFloat(rawToleranceTax);
-            const effectiveToleranceTax = (!isNaN(toleranceTax) && toleranceTax >= 0)
-                ? toleranceTax
-                : config.reconciliation.toleranceTax;
-
-            // Validate date match strategy, default to 'month'
-            const effectiveDateStrategy: 'month' | 'fy' = (rawDateStrategy === 'fy' || rawDateStrategy === 'month')
-                ? rawDateStrategy
-                : 'month';
-
-            const effectiveScope: 'all' | 'b2b' | 'cdnr' = (rawScope === 'b2b' || rawScope === 'cdnr')
-                ? rawScope
-                : 'all'; // Default to 'all'
-
+            const effectiveToleranceTax = (!isNaN(toleranceTax) && toleranceTax >= 0) ? toleranceTax : config.reconciliation.toleranceTax;
+            const effectiveDateStrategy: 'month' | 'fy' = (rawDateStrategy === 'fy' || rawDateStrategy === 'month') ? rawDateStrategy : 'month';
+            const effectiveScope: 'all' | 'b2b' | 'cdnr' = (rawScope === 'b2b' || rawScope === 'cdnr') ? rawScope : 'all';
+            
             const options: ReconciliationOptions = {
                 toleranceAmount: effectiveToleranceAmount,
                 toleranceTax: effectiveToleranceTax,
@@ -87,63 +76,86 @@ export class ReconcileController {
                 reconciliationScope: effectiveScope
             };
             this.logger.info('Using reconciliation options:', options);
-            // -------------------------------------------------------
 
-            // 2. Parse Files
-            // Run parsing in parallel
-            const [localParsedPromise, portalParsedPromise] = await Promise.allSettled([
-                this.fileParser.parseFile(localFile.buffer),
-                this.fileParser.parseFile(portalFile.buffer)
-            ]);
+            // 3. --- Parse All Files Concurrently ---
+            this.logger.info('Starting file parsing...');
+            const localParsePromises = localFiles.map(file => this.fileParser.parseFile(file.buffer /* Add options if needed */));
+            const portalParsePromises = portalFiles.map(file => this.fileParser.parseFile(file.buffer /* Add options if needed */));
 
-            if (localParsedPromise.status === 'rejected') throw localParsedPromise.reason;
-            if (portalParsedPromise.status === 'rejected') throw portalParsedPromise.reason;
+            const localSettledResults = await Promise.allSettled(localParsePromises);
+            const portalSettledResults = await Promise.allSettled(portalParsePromises);
 
-            let localRawRecords = localParsedPromise.value;
-            let portalRawRecords = portalParsedPromise.value;
+            // --- Aggregate Successfully Parsed Records & Collect Errors ---
+            let localRawRecords: Partial<InternalInvoiceRecord>[] = [];
+            const localErrors: string[] = [];
+            localSettledResults.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                    localRawRecords = localRawRecords.concat(result.value);
+                } else {
+                    const errorMsg = result.reason?.message ?? result.reason;
+                    localErrors.push(`Local file ${index + 1} (${localFiles[index].originalname}): ${errorMsg}`);
+                    this.logger.error(`Failed to parse local file ${index + 1}: ${errorMsg}`, { stack: result.reason?.stack });
+                }
+            });
 
-            this.logger.info(`Parsed local records: ${localRawRecords.length}`);
-            this.logger.info(`Parsed portal records: ${portalRawRecords.length}`);
+            let portalRawRecords: Partial<InternalInvoiceRecord>[] = [];
+            const portalErrors: string[] = [];
+            portalSettledResults.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                    portalRawRecords = portalRawRecords.concat(result.value);
+                } else {
+                    const errorMsg = result.reason?.message ?? result.reason;
+                    portalErrors.push(`Portal file ${index + 1} (${portalFiles[index].originalname}): ${errorMsg}`);
+                    this.logger.error(`Failed to parse portal file ${index + 1}: ${errorMsg}`, { stack: result.reason?.stack });
+                }
+            });
 
+            // Handle parsing errors - Fail request if any file failed
+            const allParsingErrors = [...localErrors, ...portalErrors];
+            if (allParsingErrors.length > 0) {
+                this.logger.error(`File parsing failed for ${allParsingErrors.length} file(s).`);
+                // Throw a single error summarizing the failures
+                throw new AppError('error',`Failed to parse ${allParsingErrors.length} file(s): ${allParsingErrors.join('; ')}`);
+            }
+            this.logger.info(`Successfully parsed all files. Local records raw: ${localRawRecords.length}, Portal records raw: ${portalRawRecords.length}`);
+            // --- End Parsing ---
 
-            // 3. Validation & Standardization
-            // --- Validation & Standardization Step ---
+            // 4. --- Validation & Standardization Step ---
             this.logger.info('Validating and standardizing records...');
-            // Process in parallel
             const [localValidatedPromise, portalValidatedPromise] = await Promise.allSettled([
-                this.validationService.validateAndStandardize(localRawRecords, 'local'),
-                this.validationService.validateAndStandardize(portalRawRecords, 'portal')
+                 this.validationService.validateAndStandardize(localRawRecords, 'local'),
+                 this.validationService.validateAndStandardize(portalRawRecords, 'portal')
             ]);
-            if (localValidatedPromise.status === 'rejected') throw localValidatedPromise.reason; // Or handle more gracefully
+            // Handle validation/standardization errors
+            if (localValidatedPromise.status === 'rejected') throw localValidatedPromise.reason;
             if (portalValidatedPromise.status === 'rejected') throw portalValidatedPromise.reason;
-
             const localRecords = localValidatedPromise.value;
             const portalRecords = portalValidatedPromise.value;
             this.logger.info(`Validated records - Local: ${localRecords.length}, Portal: ${portalRecords.length}`);
-            // -----------------------------------------
+            // --- End Validation ---
+            // 5. --- Perform Reconciliation ---
+            const results: ReconciliationResults = await this.reconciler.reconcile(localRecords, portalRecords, options);
+            // ---------------------------------
 
-
-
-            // 4. Perform Reconciliation
-            // TODO: Implement Async handling if needed based on record count / config
-            const results = await this.reconciler.reconcile(localRecords, portalRecords,options);
-
-            // --- Prepare Response Data (Convert Map to Object) ---
+            // 6. --- Prepare and Send Response ---
             const responseData = {
                 summary: results.summary,
-                // Convert the Map into a plain object for JSON serialization
-                details: Object.fromEntries(results.details)
+                details: Object.fromEntries(results.details) // Convert Map for JSON
             };
-
-            // 5. Send Response
             res.status(200).json(responseData);
             this.logger.info('Reconciliation successful, results sent.');
+            // ---------------------------------
 
         } catch (error) {
-            this.logger.error('Error during reconciliation handling.', error);
+            // Log error before passing to central handler
+            this.logger.error('Error during handleUploadAndReconcile:', {
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                errorObj: error // Log the full error object if needed
+            });
             next(error); // Pass error to the centralized error handler
         }
-    };
+    }; // End handleUploadAndReconcile
 
     /**
      * Handles request to export reconciliation results as Excel.

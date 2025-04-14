@@ -46,7 +46,7 @@ export class ValidationService implements IValidationService {
                 if (!record.supplierGstin || typeof record.supplierGstin !== 'string' || record.supplierGstin.trim().length < 10) { // Basic GSTIN check
                     throw new ValidationError(`Missing or invalid Supplier GSTIN`);
                 }
-                if (!record.invoiceNumberRaw || typeof record.invoiceNumberRaw !== 'string' || record.invoiceNumberRaw.trim().length === 0) {
+                if (!record.invoiceNumberRaw ) {
                     throw new ValidationError(`Missing or invalid Invoice Number (Raw)`);
                 }
                 if (record.date === undefined || record.date === null) {
@@ -139,9 +139,9 @@ export class ValidationService implements IValidationService {
                 docType = 'INV';
             } else if (mode === 'CDNR') {
                 if (type === 'CREDIT') {
-                    docType = 'C'; // Local purchase / Sup CN = Credit Note context
+                    docType = 'D'; // Local purchase / Sup CN = Credit Note context Assign Opposite D
                 } else if (type === 'DEBIT') {
-                    docType = 'D'; // Local return / Sup DN = Debit Note context
+                    docType = 'C'; // Local return / Sup DN = Debit Note context Assign Opposite C
                 } else {
                     // Mode is CDNR but Type is missing or invalid - Log warning
                     this.logger.warn(`Record ID ${record.invoiceNumberRaw} has Mode='CDNR' but invalid/missing Type='${typeRaw}'. Cannot set documentType.`);
@@ -156,6 +156,7 @@ export class ValidationService implements IValidationService {
             // Assign directly from parsed portal data (parser already sets this)
             // Basic validation for portal type
             const portalDocType = record.documentType;
+            console.log(`Portal record ID ${record.invoiceNumberRaw} has document type: ${portalDocType}`);
             if (portalDocType && ['INV', 'C', 'D'].includes(portalDocType)) {
                 docType = portalDocType as 'INV' | 'C' | 'D';
             } else {
@@ -189,7 +190,7 @@ export class ValidationService implements IValidationService {
             reverseCharge: record.reverseCharge,
             itcAvailable: record.itcAvailable,
             itcReason: record.itcReason,
-            documentType: record.documentType,
+            documentType: docType,
             supSource: record.supSource,
             supfileDate: record.supfileDate,
 

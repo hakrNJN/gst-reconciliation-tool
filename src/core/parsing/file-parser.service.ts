@@ -28,8 +28,6 @@ const EXCEL_HEADER_MAP: { [key: string]: keyof Partial<InternalInvoiceRecord> } 
     
 };
 
-
-
 @singleton()
 @injectable()
 export class FileParserService implements IFileParserService {
@@ -105,7 +103,7 @@ export class FileParserService implements IFileParserService {
                 id: uuidv4(),
                 originalLineNumber: index + 2, // Header is row 1
                 source: 'local',
-                rawData: row
+                rawData: row,
             };
             for (const header in row) {
                 const normalizedHeader = header.trim().toLowerCase();
@@ -254,7 +252,7 @@ export class FileParserService implements IFileParserService {
                         reverseCharge: note.rev === 'Y',
                         itcAvailable: note.itcavl === 'Y',
                         itcReason: note.rsn,
-                        documentType: 'INV', // Mark as Invoice
+                        documentType: note.typ, // Mark as Invoice
                         supfileDate:parsePortalDate(supplierEntry.supfildt ||''),
                         supSource: note.srctyp||'',
                     };

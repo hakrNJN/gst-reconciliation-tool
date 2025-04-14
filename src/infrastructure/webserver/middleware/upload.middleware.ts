@@ -35,8 +35,8 @@ const upload = multer({
  * Expects fields named 'localData' and 'portalData'.
  */
 export const uploadReconciliationFiles = upload.fields([
-    { name: 'localData', maxCount: 1 },
-    { name: 'portalData', maxCount: 1 }
+    { name: 'localData', maxCount: 12 },
+    { name: 'portalData', maxCount: 12 }
 ]);
 
 // If you needed only a single file upload later, you could use:

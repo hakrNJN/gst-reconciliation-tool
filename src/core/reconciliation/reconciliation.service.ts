@@ -40,7 +40,7 @@ export class ReconciliationService implements IReconciliationService {
         const reconciliationScope = options?.reconciliationScope ?? 'all'; // Default to all
 
         this.logger.info(`Starting reconciliation. Scope: ${reconciliationScope}, Local: ${localData.length}, Portal: ${portalData.length}`);
-        this.logger.info(`Using Tolerances: Amount=±<span class="math-inline">\{effectiveToleranceAmount\}, Tax\=±</span>{effectiveToleranceTax}`);
+        this.logger.info(`Using Tolerances: Amount=±${effectiveToleranceAmount}, Tax=±${effectiveToleranceTax}`);
         this.logger.info(`Using Date Match Strategy: ${effectiveDateStrategy}`);
 
         // --- Filter Data Based on Scope ---
@@ -52,6 +52,12 @@ export class ReconciliationService implements IReconciliationService {
         };
         const filteredLocalData = localData.filter(filterByScope);
         const filteredPortalData = portalData.filter(filterByScope);
+
+        // --- Initialize results AFTER filtering ---
+        const localMapBySupplier = this.groupDataBySupplier(filteredLocalData); // Group filtered data
+        const portalMapBySupplier = this.groupDataBySupplier(filteredPortalData); // Group filtered data
+        const uniqueSuppliers = new Set([...localMapBySupplier.keys(), ...portalMapBySupplier.keys()]);
+
         this.logger.info(`Filtered records for scope "${reconciliationScope}". Local: ${filteredLocalData.length}, Portal: ${filteredPortalData.length}`);
         // --- End Filter ---
         // Initialize results
@@ -81,9 +87,9 @@ export class ReconciliationService implements IReconciliationService {
 
         const matchedLocalRecordIds = new Set<string>();
         const matchedPortalRecordIds = new Set<string>();
-        const localMapBySupplier = this.groupDataBySupplier(localData);
-        const portalMapBySupplier = this.groupDataBySupplier(portalData);
-        const uniqueSuppliers = new Set([...localMapBySupplier.keys(), ...portalMapBySupplier.keys()]);
+        // const localMapBySupplier = this.groupDataBySupplier(localData);
+        // const portalMapBySupplier = this.groupDataBySupplier(portalData);
+        // const uniqueSuppliers = new Set([...localMapBySupplier.keys(), ...portalMapBySupplier.keys()]);
         results.summary.totalSuppliersLocal = localMapBySupplier.size;
         results.summary.totalSuppliersPortal = portalMapBySupplier.size;
         this.logger.info(`Processing ${uniqueSuppliers.size} unique suppliers.`);

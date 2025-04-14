@@ -215,20 +215,69 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         resetResultsUI(); // Reset UI before starting
 
-        // (Validation for files and tolerances )
-        if (!localFileInput.files.length || !portalFileInput.files.length) { /* ... */ }
-        const toleranceAmount = parseFloat(toleranceAmountInput.value); const toleranceTax = parseFloat(toleranceTaxInput.value);
-        if (isNaN(toleranceAmount) || isNaN(toleranceTax) || toleranceAmount < 0 || toleranceTax < 0) { /* ... */ }
+        /// --- Updated Validation for files ---
+        // Check if at least one file is selected for BOTH inputs
+        if (!localFileInput.files || localFileInput.files.length === 0 || !portalFileInput.files || portalFileInput.files.length === 0) {
+             showStatus('Please select at least one file for both Local Data and Portal Data.', 'warning');
+             return;
+        }
+
+        // (Tolerance validation remains the same)
+        const toleranceAmount = parseFloat(toleranceAmountInput.value);
+        const toleranceTax = parseFloat(toleranceTaxInput.value);
+        if (isNaN(toleranceAmount) || isNaN(toleranceTax) || toleranceAmount < 0 || toleranceTax < 0) {
+            showStatus('Please enter valid, non-negative tolerance values.', 'warning'); return;
+        }
 
 
         showStatus('Uploading and processing files...', 'info');
-        submitButton.disabled = true; submitSpinner.style.display = 'inline-block';
+        submitButton.disabled = true;
+        submitSpinner.style.display = 'inline-block';
 
+        // Create FormData from the form (includes tolerance, date strategy, scope options)
         const formData = new FormData(form);
-        const selectedScopeRadio = document.querySelector('input[name="reconciliationScope"]:checked');
-        const scopeValue = selectedScopeRadio ? selectedScopeRadio.value : 'all'; // Default to 'all'
-        formData.append('reconciliationScope', scopeValue);
-        console.log("Sending Scope:", scopeValue); // For debugging
+
+       // --- Explicitly handle multiple LOCAL files ---
+        formData.delete('localData'); // Clear default single entry if present
+        const localFiles = localFileInput.files;
+        if (localFiles) { // Should always be true based on validation above
+            for (let i = 0; i < localFiles.length; i++) {
+                formData.append('localData', localFiles[i], localFiles[i].name); // Use field name 'localData'
+            }
+        }
+        // --- End handling multiple local files ---
+
+        // --- Explicitly handle multiple PORTAL files ---
+        formData.delete('portalData'); // Clear default single entry if present
+        const portalFiles = portalFileInput.files;
+        if (portalFiles) { // Should always be true based on validation above
+             for (let i = 0; i < portalFiles.length; i++) {
+                 formData.append('portalData', portalFiles[i], portalFiles[i].name); // Use field name 'portalData'
+             }
+        }
+        // --- End handling multiple portal files ---
+
+
+        // Append each selected portal file using the SAME field name
+        if (!portalFiles || !localFiles ||  portalFiles.length === 0 || localFiles.length === 0) {
+            // This case should ideally be caught by 'required', but added for robustness
+            showStatus('Please select at least one Portal Data file.', 'warning');
+            // Reset UI and stop processing
+            submitButton.disabled = false;
+            submitSpinner.style.display = 'none';
+            return;
+        }
+        // --- End handling multiple portal files ---
+
+        // Other options like tolerance, date strategy, scope are already correctly
+        // included by 'new FormData(form)' if they have `name` attributes,
+        // const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
+        // formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
+
+        // const selectedScopeRadio = document.querySelector('input[name="reconciliationScope"]:checked');
+        // const scopeValue = selectedScopeRadio ? selectedScopeRadio.value : 'all'; // Default to 'all'
+        // formData.append('reconciliationScope', scopeValue);
+        // OR you can append them manually as done before:
         // formData.append('toleranceAmount', toleranceAmountInput.value);
         // formData.append('toleranceTax', toleranceTaxInput.value);
         // const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
@@ -246,7 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Don't display table immediately, wait for selection
                 noResultsMessage.textContent = 'Select a category from the dropdown to view results.';
                 noResultsMessage.style.display = 'block';
-
 
             } else { /* ... Error handling... */
                 let errorMsg = `HTTP Error: ${response.status} ${response.statusText}`;
