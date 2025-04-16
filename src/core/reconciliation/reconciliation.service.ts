@@ -242,7 +242,7 @@ export class ReconciliationService implements IReconciliationService {
                             };;
                             supplierResults.potentialMatches.push(potential);
                             results.summary.potentialMatchCount++;
-                            this.logger.info(`Found Potential Match: Local ${localInv.invoiceNumberRaw} <> Portal ${portalInv.invoiceNumberRaw}`);
+                            // this.logger.info(`Found Potential Match: Local ${localInv.invoiceNumberRaw} <> Portal ${portalInv.invoiceNumberRaw}`);
                             break; // Found potential pairing for localInv, move to next localInv
                         }
                     }

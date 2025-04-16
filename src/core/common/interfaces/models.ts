@@ -37,7 +37,7 @@ export interface InternalInvoiceRecord {
     originalLineNumber?: number; 
     /** Raw data record from parsing (optional, for debugging) */
     rawData?: any; 
-
+    invType?: number | string;
      // --- Fields primarily from Portal Data (GSTR-2B) ---
     /** Place of Supply (e.g., state code) */
     placeOfSupply?: string;
@@ -52,6 +52,7 @@ export interface InternalInvoiceRecord {
     financialYear: string; // Financial year (e.g., "2023-24") - calculated from date
     supfileDate?: Date | null; // Date when the file was processed
     supSource?: string; // Source of the record (e.g., "GSTR-2B", "GSTR-1", etc.)
+    vno?: number |string
 }
 
 /**

@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
             dataRows.forEach(rowData => {
                 const trBody = document.createElement('tr');
                 if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal') {
-                   
+
                     trBody.innerHTML = `
                         <td>${rowData.gstin ?? ''}</td>
                         <td>${rowData.supplierName ?? ''}</td>
@@ -218,8 +218,8 @@ document.addEventListener('DOMContentLoaded', () => {
         /// --- Updated Validation for files ---
         // Check if at least one file is selected for BOTH inputs
         if (!localFileInput.files || localFileInput.files.length === 0 || !portalFileInput.files || portalFileInput.files.length === 0) {
-             showStatus('Please select at least one file for both Local Data and Portal Data.', 'warning');
-             return;
+            showStatus('Please select at least one file for both Local Data and Portal Data.', 'warning');
+            return;
         }
 
         // (Tolerance validation remains the same)
@@ -237,7 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create FormData from the form (includes tolerance, date strategy, scope options)
         const formData = new FormData(form);
 
-       // --- Explicitly handle multiple LOCAL files ---
+        // --- Explicitly handle multiple LOCAL files ---
         formData.delete('localData'); // Clear default single entry if present
         const localFiles = localFileInput.files;
         if (localFiles) { // Should always be true based on validation above
@@ -251,15 +251,15 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.delete('portalData'); // Clear default single entry if present
         const portalFiles = portalFileInput.files;
         if (portalFiles) { // Should always be true based on validation above
-             for (let i = 0; i < portalFiles.length; i++) {
-                 formData.append('portalData', portalFiles[i], portalFiles[i].name); // Use field name 'portalData'
-             }
+            for (let i = 0; i < portalFiles.length; i++) {
+                formData.append('portalData', portalFiles[i], portalFiles[i].name); // Use field name 'portalData'
+            }
         }
         // --- End handling multiple portal files ---
 
 
         // Append each selected portal file using the SAME field name
-        if (!portalFiles || !localFiles ||  portalFiles.length === 0 || localFiles.length === 0) {
+        if (!portalFiles || !localFiles || portalFiles.length === 0 || localFiles.length === 0) {
             // This case should ideally be caught by 'required', but added for robustness
             showStatus('Please select at least one Portal Data file.', 'warning');
             // Reset UI and stop processing
@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
         try {
             const response = await fetch('/api/reconcile', { method: 'POST', body: formData });
-            
+
             if (response.ok) {
                 const results = await response.json();
                 currentResultsData = results; // Store results
@@ -331,71 +331,78 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Export Button Click Listener
-   exportButton.addEventListener('click', async () => {
-    if (!currentResultsData) { 
-        showExportStatus('No results data available to export.', 'warning');
-        return;
-    }
-    
-    showExportStatus('Generating export...', 'info');
-    exportButton.disabled = true;
-    exportSpinner.style.display = 'inline-block';
-    
-    try {
-        const response = await fetch('/api/reconcile/export', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(currentResultsData)
-        });
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            
-            const disposition = response.headers.get('content-disposition');
-            let filename = 'reconciliation-report.xlsx';
-            
-            if (disposition?.includes('filename=')) {
-                const fnMatch = disposition.match(/filename=["']?([^"';\n]+)["']?/i);
-                if (fnMatch?.[1]) {
-                    filename = fnMatch[1].trim();
-                    // Ensure filename has proper extension
-                    if (!filename.toLowerCase().endsWith('.xlsx')) {
-                        filename += '.xlsx';
+    exportButton.addEventListener('click', async () => {
+        if (!currentResultsData) {
+            showExportStatus('No results data available to export.', 'warning');
+            return;
+        }
+
+        showExportStatus('Generating export...', 'info');
+        exportButton.disabled = true;
+        exportSpinner.style.display = 'inline-block';
+
+        const selectedScopeRadio = document.querySelector('input[name="reconciliationScope"]:checked');
+        const scopeValue = selectedScopeRadio ? selectedScopeRadio.value : 'all';
+
+
+        try {
+            const response = await fetch('/api/reconcile/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scope: scopeValue,
+                    results: currentResultsData
+                })
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+
+                const disposition = response.headers.get('content-disposition');
+                let filename = 'reconciliation-report.xlsx';
+
+                if (disposition?.includes('filename=')) {
+                    const fnMatch = disposition.match(/filename=["']?([^"';\n]+)["']?/i);
+                    if (fnMatch?.[1]) {
+                        filename = fnMatch[1].trim();
+                        // Ensure filename has proper extension
+                        if (!filename.toLowerCase().endsWith('.xlsx')) {
+                            filename += '.xlsx';
+                        }
                     }
                 }
+
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+                showExportStatus('Report downloaded successfully.', 'success');
+            } else {
+                let errorMsg = `Export failed: ${response.status} ${response.statusText}`;
+
+                try {
+                    const errData = await response.json();
+                    errorMsg = `Error: ${errData.message || errorMsg}`;
+                } catch (e) {
+                    // JSON parsing failed, using default error message
+                }
+
+                showExportStatus(errorMsg, 'danger');
             }
-            
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
-            
-            showExportStatus('Report downloaded successfully.', 'success');
-        } else {
-            let errorMsg = `Export failed: ${response.status} ${response.statusText}`;
-            
-            try {
-                const errData = await response.json();
-                errorMsg = `Error: ${errData.message || errorMsg}`;
-            } catch (e) {
-                // JSON parsing failed, using default error message
-            }
-            
-            showExportStatus(errorMsg, 'danger');
+        } catch (error) {
+            console.error('Export fetch error:', error);
+            showExportStatus(`Network or client-side error during export: ${error.message}`, 'danger');
+        } finally {
+            exportButton.disabled = false;
+            exportSpinner.style.display = 'none';
         }
-    } catch (error) {
-        console.error('Export fetch error:', error);
-        showExportStatus(`Network or client-side error during export: ${error.message}`, 'danger');
-    } finally {
-        exportButton.disabled = false;
-        exportSpinner.style.display = 'none';
-    }
-});
+    });
 
 }); // End DOMContentLoaded

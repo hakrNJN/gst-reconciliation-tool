@@ -7,12 +7,12 @@ import config from '../../../config';
 import { AppError, ValidationError } from '../../../core/common/errors';
 import { InternalInvoiceRecord, ReconciliationMatch, ReconciliationMismatch, ReconciliationPotentialMatch, ReconciliationResults } from '../../../core/common/interfaces/models';
 import { FileParserService } from '../../../core/parsing'; // Import concrete class for DI token or use interface token
-import { ReconciliationOptions, ReconciliationService } from '../../../core/reconciliation'; // Import concrete class
+import { dateToString, ReconciliationOptions, ReconciliationService } from '../../../core/reconciliation'; // Import concrete class
 import { ReportGeneratorService } from '../../../core/reporting'; // Import concrete class
 import { ValidationService } from '../../../core/validation';
 import { LOGGER_TOKEN } from '../../logger';
 
-
+const TARGET_GSTIN_FOR_DEBUG = '09CCQPG2489D1ZA';
 // Define expected structure for uploaded files in req.files
 interface UploadedFiles {
     localData?: Express.Multer.File[];
@@ -119,7 +119,7 @@ export class ReconcileController {
             }
             this.logger.info(`Successfully parsed all files. Local records raw: ${localRawRecords.length}, Portal records raw: ${portalRawRecords.length}`);
             // --- End Parsing ---
-
+            this.logger.debug(`--- DEBUG: Data BEFORE Validation for GSTIN: ${TARGET_GSTIN_FOR_DEBUG} ---`);
             // 4. --- Validation & Standardization Step ---
             this.logger.info('Validating and standardizing records...');
             const [localValidatedPromise, portalValidatedPromise] = await Promise.allSettled([
@@ -164,7 +164,7 @@ export class ReconcileController {
     public handleExport = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         this.logger.info('Received request to export reconciliation results.');
         try {
-            const resultsInput = req.body;
+            const {results: resultsInput,scope } = req.body;
 
             if (!resultsInput || !resultsInput.summary || !resultsInput.details) {
                 throw new ValidationError('Reconciliation results data is required in the request body for export.');
@@ -238,6 +238,10 @@ export class ReconcileController {
                     sanitizeDate(mismatch.localRecord as InternalInvoiceRecord, `${contextPrefix}-Mismatch[${i}]-Local`);
                     sanitizeDate(mismatch.portalRecord as InternalInvoiceRecord, `${contextPrefix}-Mismatch[${i}]-Portal`);
                 });
+                (supplierData.potentialMatches as ReconciliationPotentialMatch[] | undefined)?.forEach((potential, i) => {
+                    sanitizeDate(potential.localRecord, `${contextPrefix}-Potential[${i}]-Local`);
+                    sanitizeDate(potential.portalRecord, `${contextPrefix}-Potential[${i}]-Portal`);
+                });
 
             }
             if (dateProcessingErrorOccurred) {
@@ -267,8 +271,8 @@ export class ReconcileController {
             const reportBuffer = await this.reporter.generateReport(resultsForReport);
 
             // Set Headers and Send Buffer
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `reconciliation-report-${timestamp}.xlsx`;
+            const timestamp = new Date()
+            const filename = `reconciliation-report-${dateToString(timestamp)}-${scope}.xlsx`;
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.send(reportBuffer);

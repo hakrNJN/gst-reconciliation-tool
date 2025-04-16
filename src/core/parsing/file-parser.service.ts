@@ -10,8 +10,7 @@ import { AppError, FileParsingError } from '../common/errors';
 import { InternalInvoiceRecord } from '../common/interfaces/models';
 import { FileParsingOptions, IFileParserService } from './interfaces/services';
 // Import normalization utils - needed to populate derived fields consistently
-import { parsePortalDate } from '../common/utils';
-import { getCanonicalMonthYear, normalizeInvoiceNumber } from '../reconciliation/normalization.utils';
+import { getCanonicalMonthYear, normalizeInvoiceNumber, parseDateString } from '../reconciliation/normalization.utils';
 
 // --- Header map for Excel remains the same ---
 const EXCEL_HEADER_MAP: { [key: string]: keyof Partial<InternalInvoiceRecord> } = {
@@ -25,7 +24,8 @@ const EXCEL_HEADER_MAP: { [key: string]: keyof Partial<InternalInvoiceRecord> } 
     'central tax amount': 'cgst', 'cgst amount': 'cgst', 'cgst': 'cgst',
     'state tax amount': 'sgst', 'sgst amount': 'sgst', 'sgst': 'sgst',
     'total tax amount': 'totalTax', 'total tax': 'totalTax',
-    
+    'invType': 'invType', 'invtype': 'invType', 'Type': 'invType', 'type': 'invType',
+    'vno': 'vno', 'VNO': 'vno', 'VNo': 'vno', 'vNo': 'vno',
 };
 
 @singleton()
@@ -85,7 +85,7 @@ export class FileParserService implements IFileParserService {
 
     private parseExcel(buffer: Buffer, options?: FileParsingOptions): Partial<InternalInvoiceRecord>[] {
         this.logger.debug('Parsing Excel buffer using raw values...');
-        const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true }); // Keep cellDates: true as a fallback/preference if it works sometimes
+        const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false }); // Keep cellDates: true as a fallback/preference if it works sometimes
         const sheetName = options?.sheetName ?? workbook.SheetNames[0];
         if (!sheetName) { throw new FileParsingError('No sheets found in the Excel workbook.'); }
         const worksheet = workbook.Sheets[sheetName];
@@ -155,12 +155,14 @@ export class FileParserService implements IFileParserService {
 
                 for (const invoice of supplierEntry.inv) {
                     lineNumber++;
-                    const parsedDate = parsePortalDate(invoice.dt);
+                    const parsedDate = parseDateString(invoice.dt);
                     if (!parsedDate) {
                         this.logger.warn(`Skipping invoice for ${supplierGstin} due to invalid date: ${invoice.dt}`, invoice);
                         continue; // Skip record if date is invalid
                     }
-
+                    if (supplierGstin === '09BUEPK9400K1ZE') {
+                        console.log('Parsed Date:', parsedDate, 'Invoice:', invoice);
+                    }
                     const igst = Number(invoice.igst ?? 0);
                     const cgst = Number(invoice.cgst ?? 0);
                     const sgst = Number(invoice.sgst ?? 0);
@@ -190,7 +192,7 @@ export class FileParserService implements IFileParserService {
                         itcAvailable: invoice.itcavl === 'Y',
                         itcReason: invoice.rsn,
                         documentType: 'INV', // Mark as Invoice
-                        supfileDate: parsePortalDate(supplierEntry.supfildt ||''),
+                        supfileDate: parseDateString(supplierEntry.supfildt ||''),
                         supSource: invoice.srctyp ||'',
                     };
                     records.push(partialRecord);
@@ -218,7 +220,7 @@ export class FileParserService implements IFileParserService {
 
                 for (const note  of supplierEntry.nt) {
                     lineNumber++;
-                    const parsedDate = parsePortalDate(note.dt);
+                    const parsedDate = parseDateString(note.dt);
                     if (!parsedDate) {
                         this.logger.warn(`Skipping CDNR  for ${supplierGstin} due to invalid date: ${note.dt}`, note);
                         continue; // Skip record if date is invalid
@@ -253,7 +255,7 @@ export class FileParserService implements IFileParserService {
                         itcAvailable: note.itcavl === 'Y',
                         itcReason: note.rsn,
                         documentType: note.typ, // Mark as Invoice
-                        supfileDate:parsePortalDate(supplierEntry.supfildt ||''),
+                        supfileDate:parseDateString(supplierEntry.supfildt ||''),
                         supSource: note.srctyp||'',
                     };
                     records.push(partialRecord);

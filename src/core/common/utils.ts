@@ -26,27 +26,7 @@ export function sleep(ms: number): Promise<void> {
 // - Debounce/throttle functions (if needed on server, less common)
 
 /** Helper to parse DD-MM-YYYY date strings */
-export function parsePortalDate(dateStr: string | undefined | null): Date | null {
-    if (!dateStr) return null;
-    // Simple check for DD-MM-YYYY format
-    const match = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-    if (match) {
-        // Note: Month in JS Date is 0-indexed (0-11), so subtract 1
-        const date = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
-        // Basic validation: Check if the parsed date components match the input string parts
-        // This helps catch invalid dates like 32-13-2024 that Date might parse leniently
-        if (date.getFullYear() === Number(match[3]) &&
-            date.getMonth() === Number(match[2]) - 1 &&
-            date.getDate() === Number(match[1])) {
-            // Set time to midday UTC to avoid timezone shifts affecting the date part
-            date.setUTCHours(12, 0, 0, 0);
-            return date;
-        }
-    }
-    // Log warning or return null if format is wrong or date is invalid
-    // console.warn(`Could not parse portal date format: ${dateStr}`);
-    return null;
-}
+
 
 /**
  * Converts a date string in any standard format (including ISO) to DD/MM/YYYY format

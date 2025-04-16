@@ -100,18 +100,42 @@ export class ValidationService implements IValidationService {
 
         // --- Robust Date Parsing ---
         let parsedDate: Date | null = null;
-
-        // ... (date parsing logic setting parsedDate) ...
-        if (record.date instanceof Date && !isNaN(record.date.getTime())) {
-            record.date.setUTCHours(12, 0, 0, 0);
-            parsedDate = record.date;
-        } else if (typeof record.date === 'number' && source === 'local') { // Only trust serial numbers from local excel source
-            parsedDate = excelSerialDateToJSDate(record.date);
-        } else if (typeof record.date === 'string') {
-            parsedDate = parseDateString(record.date); // Try DD-MM-YYYY
-            if (!parsedDate) { const isoDate = new Date(record.date); if (!isNaN(isoDate.getTime())) { isoDate.setUTCHours(12, 0, 0, 0); parsedDate = isoDate; } }
+        const rawDateValue = record.date; // Keep original for logging if needed
+    
+        try { // Add try-catch for robustness during parsing attempts
+            if (rawDateValue instanceof Date && !isNaN(rawDateValue.getTime())) {
+                // If it's already a Date (e.g., from cellDates:true, though discouraged),
+                // *re-create* it based on its UTC components to ensure UTC noon consistency.
+                // this.logger.warn(`Received pre-parsed Date object for ID ${record.id}. Normalizing to UTC noon. Consider disabling cellDates:true in parser.`);
+                parsedDate = new Date(Date.UTC(
+                    rawDateValue.getUTCFullYear(),
+                    rawDateValue.getUTCMonth(),
+                    rawDateValue.getUTCDate(),
+                    12, 0, 0, 0 // Target UTC Noon
+                ));
+            } else if (typeof rawDateValue === 'number' && source === 'local') {
+                // Excel serial date number
+                parsedDate = excelSerialDateToJSDate(rawDateValue); // Already targets UTC noon
+                if (!parsedDate) {
+                     this.logger.warn(`Failed to parse Excel serial date ${rawDateValue} for ID ${record.id}`);
+                }
+            } else if (typeof rawDateValue === 'string') {
+                // Date string (DD-MM-YYYY or DD/MM/YYYY)
+                parsedDate = parseDateString(rawDateValue); // Already targets UTC noon
+                if (!parsedDate) {
+                    // --- REMOVE THE UNRELIABLE FALLBACK ---
+                    // const isoDate = new Date(rawDateValue); // NO!
+                    // if (!isNaN(isoDate.getTime())) { ... }
+                    this.logger.warn(`Failed to parse date string "${rawDateValue}" using DD-MM-YYYY format for ID ${record.id}`);
+                    // Consider adding other format checks here if needed, but avoid new Date(string)
+                }
+            } else if (rawDateValue !== null && rawDateValue !== undefined) {
+                 this.logger.warn(`Unexpected data type for date field: ${typeof rawDateValue} for ID ${record.id}`, { value: rawDateValue });
+            }
+        } catch (parseError: any) {
+             this.logger.error(`Error during date standardization for ID ${record.id}: ${parseError.message}`, { rawValue: rawDateValue });
+             parsedDate = null; // Ensure it's null on error
         }
-        // If parsing failed, parsedDate remains null
         // --- End Date Parsing ---
 
         const dateMonthYear = getCanonicalMonthYear(parsedDate);
@@ -158,7 +182,6 @@ export class ValidationService implements IValidationService {
             // Assign directly from parsed portal data (parser already sets this)
             // Basic validation for portal type
             const portalDocType = record.documentType;
-            console.log(`Portal record ID ${record.invoiceNumberRaw} has document type: ${portalDocType}`);
             if (portalDocType && ['INV', 'C', 'D'].includes(portalDocType)) {
                 docType = portalDocType as 'INV' | 'C' | 'D';
             } else {
@@ -196,6 +219,8 @@ export class ValidationService implements IValidationService {
             documentType: docType,
             supSource: record.supSource,
             supfileDate: record.supfileDate,
+            vno: record.vno ||'',
+            invType: record.invType || ''// Ensure invType is included if present
 
         };
         return finalRecord;

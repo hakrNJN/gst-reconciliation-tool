@@ -63,35 +63,6 @@ export function checkInvoiceSimilarity(
 }
 
 /**
- * Gets the financial year string (YY-YY) from a Date object.
- * Financial year spans from April 1st to March 31st of the next year.
- * 
- * @param date - The input Date object.
- * @returns A string in "YY-YY" format (e.g., "23-24"), or an empty string if the input is invalid.
- */
-export function getFinancialYear(date: Date | null | undefined): string {
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        // console.warn(`Invalid date object received in getFinancialYear: ${date}`);
-        return '';
-    }
-
-    const year = date.getFullYear();
-    const month = date.getMonth(); // 0 = Jan, 3 = Apr
-
-    let startYear: number;
-
-    if (month >= 3) { // April (3) or later
-        startYear = year;
-    } else { // Jan (0), Feb (1), Mar (2)
-        startYear = year - 1;
-    }
-
-    const endYearShort = (startYear + 1).toString().slice(-2); // Get last two digits of end year
-
-    return `${startYear}-${endYearShort}`;
-}
-
-/**
  * Normalizes an invoice number string for matching purposes.
  * - Removes potential financial year suffixes (e.g., /24-25).
  * - Converts to uppercase.
@@ -120,24 +91,45 @@ export function normalizeInvoiceNumber(inv: string | null | undefined): string {
 }
 
 /**
- * Gets the canonical month and year string (YYYY-MM) from a Date object.
- * @param date - The input Date object.
- * @returns A string in "YYYY-MM" format, or an empty string if the input is invalid.
+ * Gets the canonical month and year string (YYYY-MM) from a Date object or null.
+ * Uses UTC methods to avoid timezone shifts.
+ * @param date - The input Date object (ideally representing UTC noon) or null.
+ * @returns A string in "YYYY-MM" format, or an empty string if the input is null or invalid.
  */
 export function getCanonicalMonthYear(date: Date | null | undefined): string {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
-        // Log a warning or handle invalid dates appropriately if needed
-        // console.warn(`Invalid date object received in getCanonicalMonthYear: ${date}`);
-        return ''; // Return empty for invalid dates
+        return ''; // Return empty for invalid/null dates
     }
 
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1; // getMonth() is 0-indexed
+    const year = date.getUTCFullYear(); // Use UTC method
+    const month = date.getUTCMonth() + 1; // Use UTC method (0-indexed)
 
-    // Pad month with leading zero if needed
     const monthString = month < 10 ? `0${month}` : String(month);
-
     return `${year}-${monthString}`;
+}
+
+/**
+ * Determines the Indian Financial Year (e.g., "2023-24") for a given Date object or null.
+ * Uses UTC methods. FY runs from April 1st to March 31st.
+ * @param date - The input Date object (ideally representing UTC noon) or null.
+ * @returns A string representing the financial year, or empty string if date is invalid/null.
+ */
+export function getFinancialYear(date: Date | null | undefined): string {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        return '';
+    }
+
+    const year = date.getUTCFullYear(); // Use UTC method
+    const month = date.getUTCMonth(); // Use UTC method (0 = Jan, 3 = Apr)
+
+    let startYear: number;
+    if (month >= 3) { // April (3) or later
+        startYear = year;
+    } else { // Jan (0), Feb (1), Mar (2)
+        startYear = year - 1;
+    }
+    const endYearShort = (startYear + 1).toString().slice(-2);
+    return `${startYear}-${endYearShort}`;
 }
 
 /**
@@ -153,101 +145,133 @@ export function getCanonicalMonthYear(date: Date | null | undefined): string {
  */
 export function getFinancialQuarter(date: Date | null | undefined): string {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
-        return ''; // Return empty for invalid dates
+        return '';
     }
 
-    const month = date.getMonth() + 1; // getMonth() is 0-indexed
-    const year = date.getFullYear();
+    // --- Use UTC Methods ---
+    const month = date.getUTCMonth(); // 0-indexed (0 = Jan, 3 = Apr)
+    const year = date.getUTCFullYear();
+    // --- End Use UTC Methods ---
 
-    let financialYear: number;
+    let financialYearStart: number;
     let quarter: number;
 
-    // Determine financial year and quarter
-    if (month >= 4 && month <= 6) {
-        // April to June = Q1
+    // Determine financial year start and quarter number
+    if (month >= 3 && month <= 5) {       // April (3) to June (5) = Q1
         quarter = 1;
-        financialYear = year;
-    } else if (month >= 7 && month <= 9) {
-        // July to September = Q2
+        financialYearStart = year;
+    } else if (month >= 6 && month <= 8) { // July (6) to September (8) = Q2
         quarter = 2;
-        financialYear = year;
-    } else if (month >= 10 && month <= 12) {
-        // October to December = Q3
+        financialYearStart = year;
+    } else if (month >= 9 && month <= 11) { // October (9) to December (11) = Q3
         quarter = 3;
-        financialYear = year;
-    } else {
-        // January to March = Q4
+        financialYearStart = year;
+    } else {                              // January (0) to March (2) = Q4
         quarter = 4;
-        financialYear = year - 1; // This belongs to previous year's financial year
+        financialYearStart = year - 1; // Belongs to the previous financial year
     }
 
-    return `${financialYear}-Q${quarter}`;
+    return `${financialYearStart}-Q${quarter}`;
 }
 
 
+/**
+ * Parses a date string (expects DD-MM-YYYY or DD/MM/YYYY) into a JavaScript Date object SET TO UTC NOON.
+ * @param dateStr The date string to parse.
+ * @returns JavaScript Date object representing UTC noon of that date, or null if parsing fails or date is invalid.
+ */
 export function parseDateString(dateStr: string | undefined | null): Date | null {
-    // Handles DD-MM-YYYY format specifically
     if (!dateStr) return null;
-    const match = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/); // Allow / or -
+    // Allow DD-MM-YYYY or DD/MM/YYYY
+    const match = String(dateStr).trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
     if (match) {
         const day = parseInt(match[1], 10);
-        const month = parseInt(match[2], 10); // Month is 1-based here
+        const month = parseInt(match[2], 10); // Month is 1-based from input
         const year = parseInt(match[3], 10);
-        // Basic validity check
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-            const date = new Date(year, month - 1, day); // Month is 0-based for Date constructor
-            // Final check if the constructed date is valid and matches input parts
-            if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-                date.setUTCHours(12, 0, 0, 0); // Set UTC noon
-                return date;
+
+        // Basic sanity check on month/day ranges
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year > 1000) {
+            try {
+                // Construct timestamp for UTC noon directly
+                const utcMilliseconds = Date.UTC(year, month - 1, day, 12, 0, 0); // Month is 0-based for Date.UTC
+                const date = new Date(utcMilliseconds);
+
+                // Final check: ensure constructed date didn't wrap due to invalid day/month combo
+                 if (isNaN(date.getTime()) ||
+                    date.getUTCFullYear() !== year ||
+                    date.getUTCMonth() !== month - 1 ||
+                    date.getUTCDate() !== day) {
+                    return null; // Date was invalid (e.g., Feb 30th)
+                 }
+                return date; // Represents UTC noon
+            } catch (e) {
+                return null; // Error during Date construction
             }
         }
     }
-    return null; // Return null if format is wrong or date is invalid
+    return null; // Format didn't match or basic sanity check failed
 }
 
 /**
- * Converts an Excel date serial number to a JavaScript Date object (UTC).
- * Assumes the standard Excel date system (1900 base, includes faulty 1900 leap year).
- * Does NOT handle the Mac 1904 date system.
+ * Converts an Excel date serial number to a JavaScript Date object SET TO UTC NOON.
+ * Assumes the standard Excel 1900 date system (Windows).
  * @param serial Excel date serial number (number of days since 1899-12-31).
- * @returns JavaScript Date object (set to UTC noon), or null if input is invalid.
+ * @returns JavaScript Date object representing UTC noon of that date, or null if input is invalid.
  */
 export function excelSerialDateToJSDate(serial: number | string | null | undefined): Date | null {
     if (typeof serial === 'string') {
-        serial = parseFloat(serial); // Attempt conversion if it's a string number
+        serial = parseFloat(serial);
     }
-    if (typeof serial !== 'number' || isNaN(serial) || serial <= 0) {
+    // Excel serial number 1 = Jan 1, 1900. Serial number 60 is Feb 29, 1900 (incorrect leap year).
+    // Dates BEFORE March 1st 1900 might be off by one day if precision is needed there.
+    // Let's focus on dates >= 1.
+    if (typeof serial !== 'number' || isNaN(serial) || serial < 1) {
         return null; // Invalid input
     }
 
-    // Excel base date: 1899-12-31 (serial number 0)
-    // JavaScript base date: 1970-01-01 UTC (Unix Epoch)
-    // Days between Excel base and JS Epoch: 25569 (includes Excel's fake 1900 leap day)
+    // Excel Epoch days adjustment to Unix Epoch (Jan 1, 1970)
+    // 25569 = days from 1900-01-01 to 1970-01-01 (inclusive of Excel's fake 1900 leap day)
     const excelEpochDiff = 25569;
-
-    // Calculate milliseconds since Unix Epoch
-    // (serial - excelEpochDiff) gives days since 1970-01-01
-    // Multiply by milliseconds per day (86400 * 1000)
     const millisecondsPerDay = 86400 * 1000;
-    const dateMilliseconds = (serial - excelEpochDiff) * millisecondsPerDay;
 
-    const date = new Date(dateMilliseconds);
+    // Calculate days since Unix epoch (adjusting for the 1900 base)
+    // We subtract the difference in days to get days relative to 1970 epoch
+    const daysSinceEpoch = serial - excelEpochDiff;
 
-    // Check if the resulting date is valid
+    // Calculate milliseconds for UTC *noon* on that day
+    // daysSinceEpoch * msPerDay gives ms for UTC midnight
+    // Add 12 hours worth of ms
+    const targetMillisecondsUTC = (daysSinceEpoch * millisecondsPerDay) + (12 * 60 * 60 * 1000);
+
+    const date = new Date(targetMillisecondsUTC);
+
+    // Final validity check
     if (isNaN(date.getTime())) {
         return null;
     }
 
-    // Return date set to UTC noon to avoid timezone issues affecting the date part
-    // We need to adjust for the local timezone offset when setting UTC noon
-    const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
-    const utcNoonDate = new Date(date.getTime() + timezoneOffsetMs + (12 * 60 * 60 * 1000));
+    return date; // This Date object represents UTC noon
+}
 
-    // Final check if UTC date is valid (sometimes edge cases fail)
-    if (isNaN(utcNoonDate.getTime())) {
-        return date; // Return original parsed date if UTC conversion fails
+/**
+ * Converts a Date object to a string in "DD-MMM-YYYY" format.
+ * Note: This function uses UTC methods to avoid timezone shifts.
+ * @param date - The Date object to convert.
+ * @returns date string in "DD-MMM-YYYY" format (e.g., "01-Jan-2023").
+ *          Returns an empty string if the date is invalid or null.
+ */
+export function dateToString(date: Date): string {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        return '';
     }
 
-    return utcNoonDate;
+    const year = date.getUTCFullYear(); // Use UTC method
+    const month = date.getUTCMonth(); // Use UTC method (0 = Jan, 3 = Apr)
+    const day = date.getUTCDate(); // Use UTC method
+
+    // Array of abbreviated month names
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    return `${day}-${monthNames[month]}-${year}`; // Format as DD-MMM-YYYY
 }
