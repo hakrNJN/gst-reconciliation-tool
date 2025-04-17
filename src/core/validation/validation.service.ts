@@ -228,6 +228,6 @@ export class ValidationService implements IValidationService {
 }
 
 // --- DI Registration ---
-container.registerSingleton(ValidationService);
+// container.registerSingleton(ValidationService);
 // Optionally register for the interface token:
 // container.register(VALIDATION_SERVICE_TOKEN, { useClass: ValidationService }, { lifecycle: Lifecycle.Singleton });

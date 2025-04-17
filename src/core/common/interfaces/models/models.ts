@@ -53,7 +53,7 @@ export interface InternalInvoiceRecord {
     supfileDate?: Date | null; // Date when the file was processed
     supSource?: string; // Source of the record (e.g., "GSTR-2B", "GSTR-1", etc.)
     vno?: number | string;
-    conum?: number|string;
+    conum?: number | string;
 }
 
 /**

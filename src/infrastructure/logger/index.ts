@@ -67,9 +67,9 @@ const loggerInstance = createAppLogger();
 // --- Dependency Injection Registration ---
 export const LOGGER_TOKEN = Symbol.for('AppLogger');
 
-container.register(LOGGER_TOKEN, {
-    useValue: loggerInstance
-});
+// container.register(LOGGER_TOKEN, {
+//     useValue: loggerInstance
+// });
 
 
 // --- Export ---

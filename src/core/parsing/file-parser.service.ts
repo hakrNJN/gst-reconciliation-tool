@@ -271,4 +271,4 @@ export class FileParserService implements IFileParserService {
 }
 
 // --- DI Registration ---
-container.registerSingleton(FileParserService);
+// container.registerSingleton(FileParserService);

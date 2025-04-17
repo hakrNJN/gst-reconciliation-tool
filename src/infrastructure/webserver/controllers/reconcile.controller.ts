@@ -11,6 +11,7 @@ import { dateToString, ReconciliationOptions, ReconciliationService } from '../.
 import { ReportGeneratorService } from '../../../core/reporting'; // Import concrete class
 import { ValidationService } from '../../../core/validation';
 import { LOGGER_TOKEN } from '../../logger';
+import { IReconciledRecordRepository, RECONCILED_RECORD_REPOSITORY_TOKEN } from '../../../core/common/interfaces/repositories';
 
 const TARGET_GSTIN_FOR_DEBUG = '09CCQPG2489D1ZA';
 // Define expected structure for uploaded files in req.files
@@ -29,7 +30,8 @@ export class ReconcileController {
         @inject(FileParserService) private fileParser: FileParserService,
         @inject(ValidationService) private validationService: ValidationService, // Inject new service
         @inject(ReconciliationService) private reconciler: ReconciliationService,
-        @inject(ReportGeneratorService) private reporter: ReportGeneratorService
+        @inject(ReportGeneratorService) private reporter: ReportGeneratorService,
+        @inject(RECONCILED_RECORD_REPOSITORY_TOKEN) private reconciledRepo: IReconciledRecordRepository
     ) {
         this.logger.info('ReconcileController initialized.');
     }
@@ -284,10 +286,165 @@ export class ReconcileController {
         }
     }
 
+
+    /**
+     * Handles POST requests to persist reconciled records (Matched/Mismatched) to the database.
+     * Expects the full ReconciliationResults object in the request body.
+     */
+    public handlePersistResults = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        this.logger.info('Received request to persist reconciliation results.');
+
+        try {
+            // 1. Extract and Validate Input
+            const resultsInput: ReconciliationResults | any = req.body.results; // Assuming results are nested under 'results' key
+
+            if (!resultsInput || typeof resultsInput !== 'object' || !resultsInput.summary || !resultsInput.details) {
+                throw new ValidationError('Valid ReconciliationResults object under the "results" key is required in the request body.');
+            }
+
+            // 2. Convert details to Map & Sanitize Dates (CRITICAL STEP)
+            //    This ensures the data structure and types are correct for the services.
+            let detailsMap: Map<string, any>;
+            try {
+                // Convert plain object from JSON back to Map
+                if (resultsInput.details instanceof Map) {
+                    detailsMap = resultsInput.details; // Already a Map (less likely from JSON)
+                } else if (typeof resultsInput.details === 'object' && resultsInput.details !== null) {
+                    detailsMap = new Map(Object.entries(resultsInput.details));
+                } else {
+                     throw new Error('results.details is not a valid object or Map.');
+                }
+
+                // Ensure dates are actual Date objects (or null) before proceeding
+                // This step is vital as services expect Date objects, not strings.
+                this.sanitizeDatesInDetails(detailsMap); // Call helper function
+
+            } catch (processingError: any) {
+                this.logger.error('Failed to process results.details for persistence.', { error: processingError.message });
+                throw new ValidationError('Invalid format or structure for results details in request body.');
+            }
+
+             // Reconstruct the results object with the processed Map
+             const resultsForPersistence: ReconciliationResults = {
+                 summary: resultsInput.summary, // Summary likely needs date checks too if timestamp is string
+                 details: detailsMap as any // Cast carefully
+             };
+
+             // Ensure summary timestamp is a Date object for prepareDataForStorage
+             if (resultsForPersistence.summary.reconciliationTimestamp && !(resultsForPersistence.summary.reconciliationTimestamp instanceof Date)) {
+                 try {
+                      const parsedDate = new Date(resultsForPersistence.summary.reconciliationTimestamp);
+                      if(isNaN(parsedDate.getTime())) throw new Error('Invalid date string');
+                     resultsForPersistence.summary.reconciliationTimestamp = parsedDate;
+                 } catch {
+                      throw new ValidationError('Invalid reconciliationTimestamp in summary.');
+                 }
+             } else if (!resultsForPersistence.summary.reconciliationTimestamp) {
+                 throw new ValidationError('Missing reconciliationTimestamp in summary.');
+             }
+
+
+            // 3. Prepare Data for Storage using ReportGeneratorService
+            this.logger.info('Preparing data for database persistence...');
+            const recordsToStore = this.reporter.prepareDataForStorage(resultsForPersistence);
+            this.logger.info(`Prepared ${recordsToStore.length} records for storage.`);
+
+            // 4. Save Data using Repository
+            if (recordsToStore.length > 0) {
+                this.logger.info('Persisting records to the database...');
+                await this.reconciledRepo.saveMany(recordsToStore);
+                this.logger.info(`Successfully persisted ${recordsToStore.length} reconciled records.`);
+            } else {
+                this.logger.info('No matched or mismatched records found in the results to persist.');
+            }
+
+            // 5. Send Success Response
+            res.status(200).json({
+                message: 'Reconciliation results processed for persistence successfully.',
+                recordsPersisted: recordsToStore.length,
+            });
+
+        } catch (error) {
+            // Catch specific AppErrors or general errors
+            this.logger.error('Error during reconciliation results persistence handling.', { error });
+            // Pass error to the centralized Express error handling middleware
+            next(error);
+        }
+    };
+
+
+    // --- Helper for Date Sanitization (Example - Adapt as needed) ---
+    // This is crucial and needs to handle your specific date formats and potential issues.
+    // Consider moving this to a dedicated validation/sanitization service.
+    private sanitizeDatesInDetails(detailsMap: Map<string, any>): void {
+        this.logger.debug('Sanitizing date fields in details map...');
+        let itemsProcessed = 0;
+        for (const [, supplierData] of detailsMap.entries()) {
+            const processRecordDate = (record: any, field: string) => {
+                if (!record || !(field in record) || record[field] === null || record[field] === undefined) {
+                    record[field] = null; // Ensure null if missing/null
+                    return;
+                }
+                const originalValue = record[field];
+                if (originalValue instanceof Date && !isNaN(originalValue.getTime())) {
+                    return; // Already a valid Date object
+                }
+                if (typeof originalValue === 'string') {
+                    try {
+                        const parsedDate = new Date(originalValue);
+                        if (!isNaN(parsedDate.getTime())) {
+                            record[field] = parsedDate; // Replace string with Date object
+                        } else {
+                            this.logger.warn(`Could not parse date string "${originalValue}" for field ${field}. Setting to null.`);
+                            record[field] = null;
+                        }
+                    } catch {
+                         this.logger.warn(`Error parsing date string "${originalValue}" for field ${field}. Setting to null.`);
+                         record[field] = null;
+                    }
+                } else {
+                     this.logger.warn(`Unexpected type "${typeof originalValue}" for date field ${field}. Setting to null.`);
+                     record[field] = null;
+                }
+            };
+
+            // Process dates in all relevant records within supplierData
+            supplierData.matches?.forEach((match: any) => {
+                processRecordDate(match.localRecord, 'date');
+                processRecordDate(match.portalRecord, 'date');
+                processRecordDate(match.portalRecord, 'supfileDate'); // Also sanitize portal filing date
+                itemsProcessed++;
+            });
+             supplierData.mismatchedAmounts?.forEach((mismatch: any) => {
+                 processRecordDate(mismatch.localRecord, 'date');
+                 processRecordDate(mismatch.portalRecord, 'date');
+                  processRecordDate(mismatch.portalRecord, 'supfileDate');
+                 itemsProcessed++;
+             });
+              supplierData.missingInPortal?.forEach((record: any) => {
+                  processRecordDate(record, 'date');
+                   // No portal date here
+                  itemsProcessed++;
+              });
+               supplierData.missingInLocal?.forEach((record: any) => {
+                   // No local date here
+                   processRecordDate(record, 'date');
+                    processRecordDate(record, 'supfileDate');
+                   itemsProcessed++;
+               });
+                supplierData.potentialMatches?.forEach((potential: any) => {
+                    processRecordDate(potential.localRecord, 'date');
+                    processRecordDate(potential.portalRecord, 'date');
+                     processRecordDate(potential.portalRecord, 'supfileDate');
+                    itemsProcessed++;
+                });
+        }
+        this.logger.debug(`Date sanitization processed approx ${itemsProcessed} record dates.`);
+    }
     // Add handleGetStatus, handleGetResults methods here if implementing async processing later
 
 }
 
 // --- DI Registration ---
 // Register the controller as a singleton
-container.registerSingleton(ReconcileController);
+// container.registerSingleton(ReconcileController);

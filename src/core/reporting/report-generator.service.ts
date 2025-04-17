@@ -9,10 +9,12 @@ import { AppError } from '../common/errors'; // If needed for specific reporting
 import {
     InternalInvoiceRecord,
     ReconciliationMatch,
-    ReconciliationResults
+    ReconciliationMismatch, // Make sure this is imported
+    ReconciliationPotentialMatch, // Make sure this is imported
+    ReconciliationResults,
 } from '../common/interfaces/models';
 import { formatDateToDDMMYYYY } from '../common/utils';
-import { IReportGeneratorService, ReportOptions } from './interfaces/services';
+import { IReportGeneratorService, ReportOptions, StorableReconciliationRecord } from './interfaces/services';
 
 // Define standard date and number formats for Excel
 const DATE_FORMAT = 'dd-mm-yyyy'; // Common Indian date format
@@ -434,6 +436,112 @@ export class ReportGeneratorService implements IReportGeneratorService {
         this.logger.debug('Consolidated local records sheet created.');
     }
     
+    /**
+     * Prepares a structured list of matched (perfect/tolerance) and mismatched records
+     * for database storage, extracting only the necessary fields.
+     *
+     * @param results - The complete reconciliation results.
+     * @returns An array of StorableReconciliationRecord objects ready for persistence.
+     * @throws {AppError} if the reconciliation timestamp is invalid.
+     */
+    public prepareDataForStorage(results: ReconciliationResults): StorableReconciliationRecord[] {
+        this.logger.info('Preparing matched and mismatched records for database storage...');
+        const storableRecords: StorableReconciliationRecord[] = [];
+
+        // 1. Validate and get Reconciliation Date
+        let reconciliationDate: Date;
+        if (results.summary.reconciliationTimestamp instanceof Date && !isNaN(results.summary.reconciliationTimestamp.getTime())) {
+            reconciliationDate = results.summary.reconciliationTimestamp;
+        } else if (typeof results.summary.reconciliationTimestamp === 'string') {
+            reconciliationDate = new Date(results.summary.reconciliationTimestamp);
+            if (isNaN(reconciliationDate.getTime())) {
+                this.logger.error('Invalid reconciliation timestamp string provided for storage preparation.');
+                throw new AppError('InvalidInputError', 'Invalid reconciliation timestamp for storage preparation.', 400);
+            }
+        } else {
+            this.logger.error('Missing or invalid reconciliation timestamp for storage preparation.');
+            throw new AppError('InvalidInputError', 'Reconciliation timestamp is required for storage preparation.', 400);
+        }
+
+        // 2. Iterate through details
+        results.details.forEach((supplierData, gstin) => {
+            const supplierName = supplierData.supplierName;
+
+            // --- Process Matched Records ---
+            supplierData.matches?.forEach(match => {
+                const local = match.localRecord;
+                const portal = match.portalRecord;
+                let remark: StorableReconciliationRecord['remark'];
+
+                if (!local) {
+                     this.logger.warn(`Skipping matched record for GSTIN ${gstin} due to missing localRecord data.`);
+                     return; // Skip if essential local data is missing
+                 }
+
+
+                if (match.status === 'MatchedPerfectly') {
+                    remark = REMARK_MATCHED_PERFECTLY;
+                } else if (match.status === 'MatchedWithTolerance') {
+                    remark = REMARK_MATCHED_TOLERANCE;
+                } else {
+                    // Should not happen based on filtering, but good practice to handle
+                    this.logger.warn(`Unexpected match status "${match.status}" for GSTIN ${gstin}, Invoice ${local.invoiceNumberRaw}. Skipping storage.`);
+                    return;
+                }
+
+                storableRecords.push({
+                    supplierGstin: gstin,
+                    supplierName: supplierName,
+                    localInvoiceNumber: local.invoiceNumberRaw ?? 'N/A', // Provide fallback
+                    localDate: local.date, // Assumes date is Date object or null
+                    localInvoiceValue: local.invoiceValue ?? 0,
+                    localConum: local.conum, // <-- The new field
+                    localVno: local.vno,
+                    localInvType: local.invType,
+                    localDocType: local.documentType,
+                    portalInvoiceNumber: portal?.invoiceNumberRaw, // Include portal info
+                    portalDate: portal?.date,                     // Include portal info
+                    remark: remark,
+                    reconciliationDate: reconciliationDate,
+                    // localRecordId: local.id // Optional: uncomment if needed
+                });
+            });
+
+            // --- Process Mismatched Amount Records ---
+            supplierData.mismatchedAmounts?.forEach(mismatch => {
+                const local = mismatch.localRecord;
+                const portal = mismatch.portalRecord; // Mismatches always have both
+
+                 if (!local || !portal) {
+                    this.logger.warn(`Skipping mismatched record for GSTIN ${gstin} due to missing local or portal record data.`);
+                    return; // Skip if essential data is missing
+                }
+
+                storableRecords.push({
+                    supplierGstin: gstin,
+                    supplierName: supplierName,
+                    localInvoiceNumber: local.invoiceNumberRaw ?? 'N/A',
+                    localDate: local.date,
+                    localInvoiceValue: local.invoiceValue ?? 0,
+                    localConum: local.conum, // <-- The new field
+                    localVno: local.vno,
+                    localInvType: local.invType,
+                    localDocType: local.documentType, // Or decide if portal.documentType is more relevant here
+                    portalInvoiceNumber: portal.invoiceNumberRaw, // Include portal info
+                    portalDate: portal.date,                     // Include portal info
+                    remark: REMARK_MISMATCHED_AMOUNT,
+                    reconciliationDate: reconciliationDate,
+                     // localRecordId: local.id // Optional: uncomment if needed
+                });
+            });
+
+            // Note: Potential Matches and Missing records are NOT included in this specific output
+            // as per the requirement focusing on definite matches and mismatches.
+        });
+
+        this.logger.info(`Prepared ${storableRecords.length} records for storage.`);
+        return storableRecords;
+    }
     // --- Helper Methods ---
     private styleHeaderRow(row: Row, headers: string[]): void {
         // Style each header cell based on the headers array length
@@ -544,7 +652,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
 
 // --- DI Registration ---
 // Registering the class itself as a singleton.
-container.registerSingleton(ReportGeneratorService);
+// container.registerSingleton(ReportGeneratorService);
 // Optionally, use an interface token if preferred:
 // import { REPORT_GENERATOR_SERVICE_TOKEN } from './interfaces/services'; // Define token first
 // container.register(REPORT_GENERATOR_SERVICE_TOKEN, { useClass: ReportGeneratorService }, { lifecycle: Lifecycle.Singleton });

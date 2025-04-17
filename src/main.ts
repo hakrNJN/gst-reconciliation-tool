@@ -1,86 +1,97 @@
 // src/main.ts
 
-// IMPORTANT: Must be the first import to enable Reflection APIs for tsyringe
 import 'reflect-metadata';
-
-// Import configuration first
 import config from './config';
+import { registerDependencies } from './register';
 
-// Import the DI container and necessary types/tokens
+// === REGISTER DEPENDENCIES IMMEDIATELY ===
+registerDependencies();
+// ==========================================
+
 import { container } from 'tsyringe';
-import { Logger } from 'winston'; // Import Logger type for resolving
-import { LOGGER_TOKEN, default as loggerInstance } from './infrastructure/logger'; // Import token AND the instance for early use
-
-// Import the Server class (needed for resolving)
+import { Logger } from 'winston';
+import { LOGGER_TOKEN } from './infrastructure/logger'; // Import token
 import { Server } from './infrastructure/webserver/server';
+import { AppDataSource } from './infrastructure/database/providers/data-source.provider';
 
-// Optional: Import Job Queue setup if using async processing
-// import { setupQueues, setupWorkers } from './infrastructure/jobs/queue.setup';
-
-
-/**
- * Main application bootstrap function.
- */
 async function bootstrap() {
-    // --- Early Logger Access ---
-    // We use the directly exported instance for logging *before* resolving everything,
-    // ensuring logging is available immediately after the logger module runs.
-    const logger = loggerInstance;
-    // OR, slightly cleaner DI approach if preferred (ensure logger registration happened):
-    // const logger = container.resolve<Logger>(LOGGER_TOKEN);
+    // Resolve logger *after* registration
+    const logger = container.resolve<Logger>(LOGGER_TOKEN);
 
     try {
         logger.info(`Application starting in ${config.nodeEnv} mode...`);
-        logger.info(`Using port: ${config.port}`); // Example: Log some config
+        logger.info(`Using port: ${config.port}`);
         logger.info(`Log level set to: ${config.logLevel}`);
 
+        // --- STEP 1: Initialize Critical Infrastructure (Database) ---
+        // Resolve the provider *after* registration
+        const dataSourceProvider = container.resolve(AppDataSource);
+        try {
+            logger.info('Initializing database connection...');
+            await dataSourceProvider.init(); // <<<< AWAIT INITIALIZATION HERE
+            logger.info('Database connection initialized successfully.');
+        } catch (dbError) {
+            logger.error('FATAL: Failed to initialize database connection. Exiting.', dbError);
+            process.exit(1);
+        }
+        // --- END STEP 1 ---
+
+
         // Optional: Setup background job queues and workers if applicable
+        // logger.info('Initializing job queues...');
         // await setupQueues();
         // await setupWorkers();
         // logger.info('Job queues and workers initialized.');
 
-        // --- Dependency Injection Resolution ---
-        // Explicitly register other services/controllers here if not done automatically
-        // via decorators or dedicated registration files. E.g.:
-        // import { ReconciliationService } from './core/reconciliation/reconciliation.service';
-        // container.registerSingleton(ReconciliationService); // if using class directly
 
-        // Resolve the Server instance using the tsyringe container.
-        // The container will automatically inject the logger (and other registered dependencies).
+        // --- STEP 2: Resolve Main Application Components (Server) ---
+        // Now that the DB is initialized, resolving the Server (and its dependent
+        // controllers/repositories) is safe because the repository constructor
+        // will successfully get the initialized DataSource via getDataSource().
+        logger.info('Resolving main application server...');
         const server = container.resolve(Server);
+        logger.info('Server component resolved.');
+        // --- END STEP 2 ---
 
-        // --- Start Server ---
+
+        // --- STEP 3: Start the Server ---
+        logger.info('Starting HTTP server...');
         await server.start(config.port);
-        logger.info(`Server listening successfully on port ${config.port}`); // Log after successful start
+        logger.info(`Server listening successfully on port ${config.port}`);
+        // --- END STEP 3 ---
 
     } catch (error) {
-        // Use logger for bootstrap errors
+        // Use logger if available, otherwise console
+        const log = container.isRegistered(LOGGER_TOKEN) ? container.resolve<Logger>(LOGGER_TOKEN) : console;
         if (error instanceof Error) {
-            logger.error('Failed to bootstrap application:', { message: error.message, stack: error.stack });
+            log.error('Failed to bootstrap application:', { message: error.message, stack: error.stack });
         } else {
-            logger.error('Failed to bootstrap application with unknown error:', error);
+            log.error('Failed to bootstrap application with unknown error:', error);
         }
-        process.exit(1); // Exit if critical setup fails
+        process.exit(1);
     }
 }
 
-/**
- * Handles graceful shutdown.
- * @param signal NodeJS Signal ('SIGINT', 'SIGTERM')
- */
+// ... (gracefulShutdown function remains the same, ensuring dataSourceProvider.close() is called) ...
 async function gracefulShutdown(signal: string) {
-    // Resolve logger and server again, or ensure they are accessible in this scope
+    // Resolve necessary components for shutdown
     const logger = container.resolve<Logger>(LOGGER_TOKEN);
-    const server = container.resolve(Server); // Assuming singleton, gets the same instance
+    const server = container.resolve(Server); // Assuming singleton
+    const dataSourceProvider = container.resolve(AppDataSource); // Assuming singleton
 
     logger.warn(`Received ${signal}. Initiating graceful shutdown...`);
 
     try {
         // Stop the server first to prevent new connections
         await server.stop();
+        logger.info('HTTP server stopped.');
 
-        // Add other cleanup logic here (e.g., close DB connections, stop workers)
-        // logger.info('Closing database connections...');
+        // Close database connections
+        logger.info('Closing database connection...');
+        await dataSourceProvider.close(); // Ensure close is called
+        logger.info('Database connection closed.');
+
+        // Add other cleanup logic here (e.g., stop workers)
         // logger.info('Stopping background workers...');
 
         logger.info('Application shut down gracefully.');
@@ -94,6 +105,7 @@ async function gracefulShutdown(signal: string) {
 // Listen for termination signals
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT')); // Catches Ctrl+C
+
 
 // Start the application
 bootstrap();

@@ -295,7 +295,7 @@ export class ReconciliationService implements IReconciliationService {
 
 // --- DI Registration ---
 // Registering the class itself as a singleton.
-container.registerSingleton(ReconciliationService);
+// container.registerSingleton(ReconciliationService);
 // Optionally, use an interface token if preferred:
 // import { RECONCILIATION_SERVICE_TOKEN } from './interfaces/services'; // Define token first
 // container.register(RECONCILIATION_SERVICE_TOKEN, { useClass: ReconciliationService }, { lifecycle: Lifecycle.Singleton });

@@ -25,11 +25,6 @@ export function registerDependencies(): void {
     container.registerSingleton(AppDataSource);
     console.log("Registered: AppDataSource (Singleton)");
 
-    container.register(RECONCILED_RECORD_REPOSITORY_TOKEN, {
-        useClass: ReconciledRecordRepository
-    });
-    console.log("Registered: RECONCILED_RECORD_REPOSITORY_TOKEN");
-
     // Register Core Services
     container.registerSingleton(FileParserService);
     console.log("Registered: FileParserService (Singleton)");
@@ -47,8 +42,11 @@ export function registerDependencies(): void {
     container.registerSingleton(ReconcileController);
     console.log("Registered: ReconcileController (Singleton)");
 
+    container.register(RECONCILED_RECORD_REPOSITORY_TOKEN, {
+        useClass: ReconciledRecordRepository
+    });
+    console.log("Registered: RECONCILED_RECORD_REPOSITORY_TOKEN");
 
-    console.log("Registered: Server (Singleton)");
 
     console.log("--- Dependency Registration Complete ---"); // Add log
 }
