@@ -1,7 +1,7 @@
 // src/infrastructure/database/repositories/reconciled-record.repository.ts
 import 'reflect-metadata';
 import { inject, injectable } from 'tsyringe';
-import { DataSource, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import winston from 'winston';
 
 // --- Infrastructure Imports ---
@@ -149,23 +149,23 @@ export class ReconciledRecordRepository implements IReconciledRecordRepository {
                 entity.reconciliationDate = dto.reconciliationDate; // Assumes Date object
                  // Handle localConum
                  if (dto.localConum !== undefined && dto.localConum !== null) {
-                    entity.localConum = parseInt(dto.localConum.toString()); // Convert number or use string directly
+                    entity.Conum = parseInt(dto.localConum.toString()); // Convert number or use string directly
                 } else {
-                    entity.localConum = undefined; // Explicitly undefined for null/undefined input -> maps to NULL
+                    entity.Conum = undefined; // Explicitly undefined for null/undefined input -> maps to NULL
                 }
 
                 // Handle localVno
                 if (dto.localVno !== undefined && dto.localVno !== null) {
-                    entity.localVno = parseInt(dto.localVno.toString());
+                    entity.Vno = parseInt(dto.localVno.toString());
                 } else {
-                    entity.localVno = undefined;
+                    entity.Vno = undefined;
                 }
 
                 // Handle localInvType
                 if (dto.localInvType !== undefined && dto.localInvType !== null) {
-                    entity.localInvType = parseInt(dto.localInvType.toString());
+                    entity.Type = parseInt(dto.localInvType.toString());
                 } else {
-                    entity.localInvType = undefined;
+                    entity.Type = undefined;
                 }
                 // Timestamps (createdAt, updatedAt) are handled by DB/TypeORM decorators
                 // Map optional sourceItcRegisterId if you added it

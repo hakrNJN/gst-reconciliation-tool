@@ -20,8 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableCaption = document.getElementById('tableCaption');
     const noResultsMessage = document.getElementById('noResultsMessage');
     const exportButton = document.getElementById('exportButton');
+    const saveButton = document.getElementById('saveButton');
     const exportSpinner = exportButton.querySelector('.spinner-border');
-    const exportStatusArea = document.getElementById('exportStatusArea');
+    const saveSpinner = saveButton.querySelector('.spinner-border');
+    // const exportStatusArea = document.getElementById('exportStatusArea');
 
     let currentResultsData = null; // Store full results for reuse
 
@@ -31,14 +33,24 @@ document.addEventListener('DOMContentLoaded', () => {
         statusArea.textContent = message; statusArea.classList.remove('visually-hidden');
     }
 
-    function showExportStatus(message, type = 'info') {
-        exportStatusArea.innerHTML = ''; // Clear previous export status
-        exportStatusArea.className = `alert alert-${type}`;
-        exportStatusArea.textContent = message;
-        exportStatusArea.classList.remove('visually-hidden');
+    function showAndEnableActionButtons() {
+        if (exportButton) {
+            exportButton.style.display = 'block'; // Use block for full width buttons
+            exportButton.disabled = false;       // *** Enable Button ***
+        }
+         if (saveButton) {
+            saveButton.style.display = 'block';   // Use block for full width buttons
+            saveButton.disabled = false;         // *** Enable Button ***
+        }
     }
+    // function showExportStatus(message, type = 'info') {
+    //     exportStatusArea.innerHTML = ''; // Clear previous export status
+    //     exportStatusArea.className = `alert alert-${type}`;
+    //     exportStatusArea.textContent = message;
+    //     exportStatusArea.classList.remove('visually-hidden');
+    // }
     function hideStatus() { statusArea.classList.add('visually-hidden'); }
-    function hideExportStatus() { exportStatusArea.classList.add('visually-hidden'); }
+    // function hideExportStatus() { exportStatusArea.classList.add('visually-hidden'); }
     function formatDate(dateString) { // Format date string/object for display
         if (!dateString) return '';
         try {
@@ -64,9 +76,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tableCaption.textContent = '';
         noResultsMessage.style.display = 'none';
         exportButton.style.display = 'none';
+        saveButton.style.display = 'none';
         currentResultsData = null;
         hideStatus();
-        hideExportStatus();
+        // hideExportStatus();
     }
 
     // --- Display Table Data ---
@@ -268,20 +281,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         // --- End handling multiple portal files ---
-
-        // Other options like tolerance, date strategy, scope are already correctly
-        // included by 'new FormData(form)' if they have `name` attributes,
-        // const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
-        // formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
-
-        // const selectedScopeRadio = document.querySelector('input[name="reconciliationScope"]:checked');
-        // const scopeValue = selectedScopeRadio ? selectedScopeRadio.value : 'all'; // Default to 'all'
-        // formData.append('reconciliationScope', scopeValue);
-        // OR you can append them manually as done before:
-        // formData.append('toleranceAmount', toleranceAmountInput.value);
-        // formData.append('toleranceTax', toleranceTaxInput.value);
-        // const selectedDateStrategy = document.querySelector('input[name="dateMatchStrategy"]:checked');
-        // formData.append('dateMatchStrategy', selectedDateStrategy ? selectedDateStrategy.value : 'month');
         try {
             const response = await fetch('/api/reconcile', { method: 'POST', body: formData });
 
@@ -291,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 showStatus('Reconciliation successful! Select a category below to view details.', 'success');
                 resultsSection.classList.remove('visually-hidden'); // Show results section
-                exportButton.style.display = 'inline-block'; // Show export button (always available now)
+                showAndEnableActionButtons()// Show export button (always available now)
                 // Don't display table immediately, wait for selection
                 noResultsMessage.textContent = 'Select a category from the dropdown to view results.';
                 noResultsMessage.style.display = 'block';
@@ -333,11 +332,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Export Button Click Listener
     exportButton.addEventListener('click', async () => {
         if (!currentResultsData) {
-            showExportStatus('No results data available to export.', 'warning');
+            showStatus('No results data available to export.', 'warning');
             return;
         }
 
-        showExportStatus('Generating export...', 'info');
+        showStatus('Generating export...', 'info');
         exportButton.disabled = true;
         exportSpinner.style.display = 'inline-block';
 
@@ -383,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.URL.revokeObjectURL(url);
                 a.remove();
 
-                showExportStatus('Report downloaded successfully.', 'success');
+                showStatus('Report downloaded successfully.', 'success');
             } else {
                 let errorMsg = `Export failed: ${response.status} ${response.statusText}`;
 
@@ -394,15 +393,64 @@ document.addEventListener('DOMContentLoaded', () => {
                     // JSON parsing failed, using default error message
                 }
 
-                showExportStatus(errorMsg, 'danger');
+                showStatus(errorMsg, 'danger');
             }
         } catch (error) {
             console.error('Export fetch error:', error);
-            showExportStatus(`Network or client-side error during export: ${error.message}`, 'danger');
+            showStatus(`Network or client-side error during export: ${error.message}`, 'danger');
         } finally {
             exportButton.disabled = false;
             exportSpinner.style.display = 'none';
         }
     });
 
+    saveButton.addEventListener('click', async () => {
+        if (!currentResultsData) {
+            showStatus('No results data available to export.', 'warning');
+            return;
+        }
+
+        showStatus('Generating export...', 'info');
+        saveButton.disabled = true;
+        saveSpinner.style.display = 'inline-block';
+
+        const selectedScopeRadio = document.querySelector('input[name="reconciliationScope"]:checked');
+        const scopeValue = selectedScopeRadio ? selectedScopeRadio.value : 'all';
+
+
+        try {
+            const response = await fetch('/api/reconcile/persist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scope: scopeValue,
+                    results: currentResultsData
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json(); // Parse the JSON response body
+                showStatus(`${data.message} (Records processed: ${data.recordsPersisted})`, 'success');
+            } else {
+                let errorMsg = `Export failed: ${response.status} ${response.statusText}`;
+
+                try {
+                    const errData = await response.json();
+                    errorMsg = `Error: ${errData.message || errorMsg}`;
+                } catch (e) {
+                    // JSON parsing failed, using default error message
+                }
+
+                showStatus(errorMsg, 'danger');
+            }
+        } catch (error) {
+            console.error('Export fetch error:', error);
+            showStatus(`Network or client-side error during export: ${error.message}`, 'danger');
+        } finally {
+            saveButton.disabled = false;
+            saveSpinner.style.display = 'none';
+        }
+    });
+
+   
 }); // End DOMContentLoaded

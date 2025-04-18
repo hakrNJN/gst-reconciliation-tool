@@ -1,6 +1,6 @@
 // src/core/validation/validation.service.ts
 import 'reflect-metadata';
-import { container, inject, injectable, singleton } from 'tsyringe';
+import { inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 import { LOGGER_TOKEN } from '../../infrastructure/logger';
 import { InternalInvoiceRecord } from '../common/interfaces/models';
@@ -220,7 +220,8 @@ export class ValidationService implements IValidationService {
             supSource: record.supSource,
             supfileDate: record.supfileDate,
             vno: record.vno ||'',
-            invType: record.invType || ''// Ensure invType is included if present
+            invType: record.invType || '',// Ensure invType is included if present
+            conum: record.conum || '', // Ensure conum is included if present
 
         };
         return finalRecord;

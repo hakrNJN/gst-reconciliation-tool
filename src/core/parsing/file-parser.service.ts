@@ -1,6 +1,6 @@
 // src/core/parsing/file-parser.service.ts (Rewritten parseJson)
 import 'reflect-metadata'; // DI requirement
-import { container, inject, injectable, singleton } from 'tsyringe';
+import { inject, injectable, singleton } from 'tsyringe';
 import { v4 as uuidv4 } from 'uuid';
 import { Logger } from 'winston';
 import * as XLSX from 'xlsx';
@@ -26,6 +26,8 @@ const EXCEL_HEADER_MAP: { [key: string]: keyof Partial<InternalInvoiceRecord> } 
     'total tax amount': 'totalTax', 'total tax': 'totalTax',
     'invType': 'invType', 'invtype': 'invType', 'Type': 'invType', 'type': 'invType',
     'vno': 'vno', 'VNO': 'vno', 'VNo': 'vno', 'vNo': 'vno',
+    'conum': 'conum', 'Conum': 'conum', 'CONUM': 'conum','Company': 'conum',
+    'company': 'conum', 'Company Name': 'conum'
 };
 
 @singleton()

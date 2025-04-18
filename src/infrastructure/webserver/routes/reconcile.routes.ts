@@ -26,6 +26,13 @@ router.post(
     reconcileController.handleExport
 );
 
+// POST /api/reconcile/export - Generate and download Excel report
+// Expects results JSON in the request body (adjust if using job IDs later)
+router.post(
+    '/persist',
+    reconcileController.handlePersistResults
+);
+
 // Add routes for status/results retrieval if using async processing
 // GET /api/reconcile/status/:jobId
 // router.get('/status/:jobId', reconcileController.handleGetStatus);

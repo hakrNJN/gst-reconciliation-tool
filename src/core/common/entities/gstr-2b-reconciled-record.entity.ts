@@ -22,6 +22,16 @@ export class Gstr2bReconciledRecord {
     @PrimaryGeneratedColumn('increment')
     id!: number;
 
+    @Column({ type: 'numeric',  nullable: true })
+    Conum?: number;
+
+    @Index() // Index voucher number if frequently queried
+    @Column({ type: 'numeric',  nullable: true })
+    Vno?: number;
+
+    @Column({ type: 'numeric',  nullable: true }) // B2B, SEZWP etc.
+    Type?: number;
+
     @Index() // Index for faster lookups by GSTIN
     @Column({ type: 'nvarchar', length: 15 }) // Standard GSTIN length
     supplierGstin!: string;
@@ -35,18 +45,8 @@ export class Gstr2bReconciledRecord {
     @Column({ type: 'date', nullable: true }) // Use 'date' if time is not important, 'datetime2' otherwise
     localDate!: Date | null;
 
-    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 }) // Precision for currency
+    @Column({ type: 'numeric', precision: 9, scale: 2, default: 0 }) // Precision for currency
     localInvoiceValue!: number;
-
-    @Column({ type: 'nvarchar', length: 50, nullable: true })
-    localConum?: number;
-
-    @Index() // Index voucher number if frequently queried
-    @Column({ type: 'nvarchar', length: 50, nullable: true })
-    localVno?: number;
-
-    @Column({ type: 'nvarchar', length: 20, nullable: true }) // B2B, SEZWP etc.
-    localInvType?: number;
 
     @Column({ type: 'nvarchar', length: 10, nullable: true }) // INV, CRN, DBN
     localDocType?: string;
@@ -67,13 +67,13 @@ export class Gstr2bReconciledRecord {
     remark!: ReconciliationRemark | string; // Store as string, use enum type in code
 
     @Index() // Index by recon date
-    @Column({ type: 'datetime2' }) // Store the timestamp when this record was reconciled/saved
+    @Column({ type: 'datetime' }) // Store the timestamp when this record was reconciled/saved
     reconciliationDate!: Date;
 
-    @CreateDateColumn({ type: 'datetime2', default: () => 'GETDATE()' }) // Database default timestamp
+    @CreateDateColumn({ type: 'datetime', default: () => 'GETDATE()' }) // Database default timestamp
     createdAt!: Date;
 
-    @UpdateDateColumn({ type: 'datetime2', default: () => 'GETDATE()', onUpdate: 'GETDATE()' }) // Database timestamp on update
+    @UpdateDateColumn({ type: 'datetime', default: () => 'GETDATE()', onUpdate: 'GETDATE()' }) // Database timestamp on update
     updatedAt!: Date;
 
      // Optional: If you track the original source record ID

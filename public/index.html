@@ -10,15 +10,42 @@
       integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
       crossorigin="anonymous"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+      integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="container mt-4">
-      <header class="mb-4">
-        <h1>GST Reconciliation Tool</h1>
-        <p class="lead">
-          Phase 1 Test Client (Surat, Gujarat - April 11, 2025)
-        </p>
+      <header class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
+        <!-- Left Side Title -->
+        <div>
+           <h1>GST Reconciliation Tool</h1>
+           <p class="lead mb-0"> <!-- Removed bottom margin -->
+             Devoloped by <a href="https://www.github.com/hakrnjn" target="_blank">Debojit</a> 
+           </p>
+        </div>
+
+        <!-- Right Side Date Range Picker -->
+        <!-- <div class="db-fetch-date-range ms-md-3 mt-2 mt-md-0">
+           <label class="form-label small text-muted mb-1 d-block text-md-end">
+               For DB Fetch: Select Date Range
+           </label>
+           <div class="d-flex align-items-end gap-2">
+               <div>
+                   <label for="startDateDb" class="form-label form-label-sm mb-0">Start:</label>
+                   <input type="date" class="form-control form-control-sm" id="startDateDb" name="startDateDb">
+               </div>
+               <div>
+                   <label for="endDateDb" class="form-label form-label-sm mb-0">End:</label>
+                   <input type="date" class="form-control form-control-sm" id="endDateDb" name="endDateDb">
+               </div>
+           </div>
+        </div> -->
       </header>
 
       <section id="upload-section" class="card mb-4">
@@ -29,7 +56,7 @@
             <div class="row mb-3">
               <div class="col-md-6">
                 <label for="localFile" class="form-label">
-                  1. Local Purchase Data (Excel/JSON) -
+                  1. Local Purchase Data (Excel/JSON/DB) - <!-- Added DB -->
                   <a
                     href="Purchase Data Sample.xlsx"
                     download="Purchase Data Sample.xlsx"
@@ -38,29 +65,45 @@
                     Sample File
                   </a>
                 </label>
-                <input
-                  class="form-control"
-                  type="file"
-                  id="localFile"
-                  name="localData"
-                  accept=".xlsx,.xls,.json"
-                  required
-                  multiple 
-                />
+                <!-- Use Bootstrap Input Group for attaching button -->
+                <div class="input-group">
+                  <input
+                    class="form-control"
+                    type="file"
+                    id="localFile"
+                    name="localData"
+                    accept=".xlsx,.xls,.json"
+                    required
+                    multiple
+                  />
+                  <!-- Database Fetch Button -->
+                  <!-- <button class="btn btn-outline-secondary" type="button" id="fetchLocalDataDbButton" title="Fetch Local Data from Database">
+                      <i class="fas fa-database"></i> 
+                  </button> -->
+                </div>
+                <!-- End Input Group -->
               </div>
               <div class="col-md-6">
-                <label for="portalFile" class="form-label"
-                  >2. Portal Data / GSTR-2B (Excel/JSON)</label
-                >
-                <input
-                  class="form-control"
-                  type="file"
-                  id="portalFile"
-                  name="portalData"
-                  accept=".xlsx,.xls,.json"
-                  required
-                  multiple 
-                />
+                <label for="portalFile" class="form-label">
+                  2. Portal Data / GSTR-2B (Excel/JSON/DB) <!-- Added DB -->
+                </label>
+                <!-- Use Bootstrap Input Group -->
+                <div class="input-group">
+                  <input
+                    class="form-control"
+                    type="file"
+                    id="portalFile"
+                    name="portalData"
+                    accept=".xlsx,.xls,.json"
+                    required
+                    multiple
+                  />
+                  <!-- Database Fetch Button -->
+                  <!-- <button class="btn btn-outline-secondary" type="button" id="fetchPortalDataDbButton" title="Fetch Portal Data from Database">
+                      <i class="fas fa-database"></i> 
+                  </button> -->
+                </div>
+                <!-- End Input Group -->
               </div>
             </div>
 
@@ -142,7 +185,6 @@
                         name="dateMatchStrategy"
                         id="dateMatchMonth"
                         value="quarter"
-                        checked
                       />
                       <label class="form-check-label" for="dateMatchMonth"
                         >Quarter</label
@@ -212,28 +254,69 @@
                 </div>
               </div>
 
-              <!-- Card 4: Submit Button -->
+              <!-- Card 4: Action Buttons -->
               <div class="col-md-6 col-lg-3">
                 <div class="card h-100 card-min-height">
+                  <!-- Modified card-body for vertical stacking -->
                   <div
-                    class="card-body d-flex align-items-center justify-content-center"
+                    class="card-body d-flex flex-column justify-content-center p-2"
                   >
+                    <!-- RECONCILE BUTTON (Primary Action) -->
                     <button
                       type="submit"
                       id="submitButton"
-                      class="btn btn-primary w-100"
+                      class="btn btn-primary w-100 mb-2"
                     >
                       <span
-                        class="spinner-border spinner-border-sm"
+                        id="reconcileSpinner"
+                        class="spinner-border spinner-border-sm me-1"
                         role="status"
                         aria-hidden="true"
                         style="display: none"
                       ></span>
                       Reconcile
                     </button>
+
+                    <!-- SAVE BUTTON (Secondary Action) -->
+                    <!-- <button
+                      type="button"
+                      id="saveButton"
+                      class="btn btn-warning w-100 mb-2"
+                      style="display: none"
+                      disabled
+                    >
+                      <span
+                        id="saveSpinner"
+                        class="spinner-border spinner-border-sm me-1"
+                        role="status"
+                        aria-hidden="true"
+                        style="display: none"
+                      ></span>
+                      Save Results
+                    </button> -->
+
+                    <!-- EXPORT BUTTON (Secondary Action) -->
+                    <!-- <button
+                      type="button"
+                      id="exportButton"
+                      class="btn btn-success w-100"
+                      style="display: none"
+                      disabled
+                    >
+                      <span
+                        id="exportSpinner"
+                        class="spinner-border spinner-border-sm me-1"
+                        role="status"
+                        aria-hidden="true"
+                        style="display: none"
+                      ></span>
+                      Export Results
+                    </button> -->
                   </div>
+                  <!-- End modified card-body -->
                 </div>
               </div>
+              <!-- End Card 4 -->
             </div>
           </form>
         </div>
@@ -248,36 +331,41 @@
         <hr />
         <div class="row align-items-center mb-3">
           <!-- Left aligned text -->
-          <div class="col-md-4 text-md-start">
+          <div class="col-lg-4 col-md-12 mb-2 mb-lg-0"> <!-- Adjust columns for responsiveness -->
             <h5 class="mb-0">Reconciliation Results</h5>
           </div>
-          
+
           <!-- Centered select with label on left -->
-          <div class="col-md-4 d-flex justify-content-md-center align-items-center">
-            <label for="resultsCategorySelect" class="me-2 mb-0 flex-shrink-0">View Results For:</label>
-            <select class="form-select" id="resultsCategorySelect">
-              <option selected disabled value="">-- Select Category --</option>
-              <option value="perfect">Perfectly Matched Records</option>
-              <option value="tolerance">Matched with Tolerance</option>
-              <option value="mismatch">Mismatched Amounts</option>
-              <option value="potential">Potential Match</option>
-              <option value="missingPortal">Missing in Portal (GSTR-2B)</option>
-              <option value="missingLocal">Missing in Local Books</option>
-            </select>
+          <div class="col-lg-4 col-md-6 mb-2 mb-md-0">
+            <div class="d-flex align-items-center justify-content-md-center">
+               <label for="resultsCategorySelect" class="me-2 mb-0 flex-shrink-0">View:</label>
+               <select class="form-select" id="resultsCategorySelect">
+                  <option selected disabled value="">-- Select Category to View Result --</option>
+                  <option value="perfect">Perfectly Matched</option>
+                  <option value="tolerance">Matched (Tolerance)</option>
+                  <option value="mismatch">Mismatched Amounts</option>
+                  <option value="potential">Potential Match</option>
+                  <option value="missingPortal">Missing in Portal</option>
+                  <option value="missingLocal">Missing in Local</option>
+                  <option value="consolidated">Consolidated Local</option>
+               </select>
+            </div>
           </div>
-          
+
           <!-- Right aligned button -->
-          <div class="col-md-4 d-flex justify-content-md-end">
-            <button id="exportButton" class="btn btn-success"style="display: none" >
-              <span
-                class="spinner-border spinner-border-sm me-1"
-                role="status"
-                aria-hidden="true"
-                style="display: none"
-              ></span>
-              Export Full Results (Excel)
-            </button>
-          </div>
+          <div class="col-lg-4 col-md-6">
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                 <button id="saveButton" class="btn btn-info" style="display: none;" disabled>
+                     <span id="saveSpinner" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style="display: none;"></span>
+                     Save Results
+                 </button>
+                 <button id="exportButton" class="btn btn-success" style="display: none;" disabled>
+                     <span id="exportSpinner" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style="display: none;"></span>
+                     Export Results
+                 </button>
+             </div>
+         </div>
+       </div>
         </div>
 
         <div
@@ -293,7 +381,7 @@
             <tbody id="resultsTableBody"></tbody>
           </table>
         </div>
-        <p id="noResultsMessage" class="text-muted" style="display: none"></p>
+        
 
         <div
           id="exportStatusArea"
