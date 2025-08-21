@@ -1,24 +1,22 @@
 // src/core/reporting/report-generator.service.ts
-import ExcelJS, { Row, Workbook, Worksheet } from 'exceljs'; // Import exceljs
-import 'reflect-metadata'; // DI requirement
+import ExcelJS, { Row, Workbook, Worksheet } from 'exceljs';
+import 'reflect-metadata';
 import { inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
-
 import { LOGGER_TOKEN } from '../../infrastructure/logger';
-import { AppError } from '../common/errors'; // If needed for specific reporting errors
+import { AppError } from '../common/errors';
 import {
+    AmountSummary,
     InternalInvoiceRecord,
-    ReconciliationMatch, // Make sure this is imported
-    ReconciliationResults
+    ReconciliationMatch,
+    ReconciliationResults,
+    ReconciliationSummary
 } from '../common/interfaces/models';
 import { formatDateToDDMMYYYY } from '../common/utils';
 import { IReportGeneratorService, ReportOptions, StorableReconciliationRecord } from './interfaces/services';
 
-// Define standard date and number formats for Excel
-const DATE_FORMAT = 'dd-mm-yyyy'; // Common Indian date format
-const CURRENCY_FORMAT = '#,##0.00'; // Basic currency format
-
-// Define remark constants for consistency
+const DATE_FORMAT = 'dd-mm-yyyy';
+const CURRENCY_FORMAT = '#,##0.00';
 const REMARK_MATCHED_PERFECTLY = 'Matched Perfectly';
 const REMARK_MATCHED_TOLERANCE = 'Matched (Tolerance)';
 const REMARK_MISMATCHED_AMOUNT = 'Mismatched Amounts';
@@ -35,26 +33,15 @@ export class ReportGeneratorService implements IReportGeneratorService {
         this.logger.info('ReportGeneratorService initialized.');
     }
 
-    /**
-     * Generates an Excel report from reconciliation results.
-     */
-    async generateReport(
-        results: ReconciliationResults,
-        options?: ReportOptions // Options currently not used, but available
-    ): Promise<Buffer> {
+    async generateReport(results: ReconciliationResults, options?: ReportOptions): Promise<Buffer> {
         this.logger.info('Generating reconciliation Excel report...');
-        // Ensure timestamp is a Date object (consider moving this validation upstream if possible)
         if (!(results.summary.reconciliationTimestamp instanceof Date)) {
             results.summary.reconciliationTimestamp = new Date(results.summary.reconciliationTimestamp);
         }
         try {
             const workbook = new ExcelJS.Workbook();
-            const timestamp = results.summary.reconciliationTimestamp instanceof Date
-                ? results.summary.reconciliationTimestamp
-                : new Date(); // Fallback if conversion failed or was missing
             this.setWorkbookProperties(workbook, results.summary.reconciliationTimestamp);
             this.createSummarySheet(workbook, results.summary);
-            // --- Create Consolidated Local Records Sheet (ITC Register View) ---
             this.createConsolidatedLocalSheet(workbook, results.details);
             this.createPerfectlyMatchedSheet(workbook, results.details);
             this.createToleranceMatchedSheet(workbook, results.details);
@@ -64,75 +51,99 @@ export class ReportGeneratorService implements IReportGeneratorService {
             this.createMissingInLocalSheet(workbook, results.details);
             this.createReverseChargeSheet(workbook, results.reverseChargeLiable);
 
-
-            // Write workbook to buffer
             const buffer = await workbook.xlsx.writeBuffer();
             this.logger.info('Excel report generated successfully.');
-            return buffer as unknown as Buffer; // Cast needed as writeBuffer returns ArrayBuffer | Buffer
-
+            return buffer as unknown as Buffer;
         } catch (error: any) {
             this.logger.error('Failed to generate Excel report:', { message: error.message, stack: error.stack });
-            if (error instanceof AppError) {
-                throw error;
-            }
+            if (error instanceof AppError) throw error;
             throw new AppError('ReportGenerationError', 'Failed to generate Excel report', 500, false);
         }
     }
 
     private setWorkbookProperties(workbook: Workbook, timestamp: Date | string): void {
         workbook.creator = 'GST Reconciliation Tool';
-        workbook.lastModifiedBy = 'GST Reconciliation Tool';
-
-        // Ensure timestamp is a Date object
         const created = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
         workbook.created = created;
         workbook.modified = new Date();
-        workbook.lastPrinted = new Date();
     }
 
-    // --- Sheet Creation Methods ---
-
-    private createSummarySheet(workbook: Workbook, summary: ReconciliationResults['summary']): void {
+    private createSummarySheet(workbook: Workbook, summary: ReconciliationSummary): void {
         const sheet = workbook.addWorksheet('Summary');
-        sheet.addRow(['GST Reconciliation Summary']).font = { bold: true, size: 14 };
-        sheet.mergeCells('A1:B1'); // Merge for title
-        sheet.addRow([]); // Spacer row
 
-        // Add summary data
-        this.addSummaryRow(sheet, 'Reconciliation Timestamp:', summary.reconciliationTimestamp, DATE_FORMAT + ' hh:mm:ss');
-        sheet.addRow([]); // Spacer row
-        this.addSummaryRow(sheet, 'Total Purchase Records:', summary.totalLocalRecords);
-        this.addSummaryRow(sheet, 'Total Portal (GSTR-2B) Records:', summary.totalPortalRecords);
-        this.addSummaryRow(sheet, 'Total Unique Suppliers (Local):', summary.totalSuppliersLocal);
-        this.addSummaryRow(sheet, 'Total Unique Suppliers (Portal):', summary.totalSuppliersPortal);
-        sheet.addRow([]); // Spacer row
-        this.addSummaryRow(sheet, 'Perfectly Matched Records:', summary.perfectlyMatchedCount);
-        this.addSummaryRow(sheet, 'Matched within Tolerance:', summary.toleranceMatchedCount);
-        this.addSummaryRow(sheet, 'Mismatch in Portal vs Book:', summary.mismatchedAmountsCount);
-        this.addSummaryRow(sheet, 'Potential Matches Found:', summary.potentialMatchCount); // Add new row
-        this.addSummaryRow(sheet, 'Missing in Portal (GSTR-2B):', summary.missingInPortalCount);
-        this.addSummaryRow(sheet, 'Missing in Local Books:', summary.missingInLocalCount);
-        this.addSummaryRow(sheet, 'RCM Entries:', summary.rcmEntriesCount);
+        // Title
+        const titleRow = sheet.addRow(['GST Reconciliation Summary']);
+        titleRow.font = { bold: true, size: 16 };
+        sheet.mergeCells('A1:K1');
 
-        // Style the summary sheet
-        sheet.columns.forEach(column => {
-            if (column.values && column.values.length > 2) { // Check if column has values besides header/spacer
-                column.width = (column.values[2] as string | undefined)?.length ?? 25; // Adjust width based on label length
+        // Timestamp
+        const timeRow = sheet.addRow(['Reconciliation Timestamp:', summary.reconciliationTimestamp]);
+        timeRow.getCell(2).numFmt = DATE_FORMAT + ' hh:mm:ss';
+        sheet.addRow([]); // Spacer
+
+        // Main Headers
+        const headerRow1 = sheet.addRow([
+            '', 'Count', 'Book', '', '', '', 'Portal', '', '', ''
+        ]);
+        sheet.mergeCells('C4:F4');
+        sheet.mergeCells('G4:J4');
+        headerRow1.font = { bold: true, size: 12 };
+        headerRow1.alignment = { horizontal: 'center' };
+
+        // Sub Headers
+        const headerRow2 = sheet.addRow([
+            'Particulars', '', 'Taxable', 'IGST', 'CGST', 'SGST', 'Taxable', 'IGST', 'CGST', 'SGST'
+        ]);
+        headerRow2.font = { bold: true };
+
+        // Helper to add a row for categories with Book and Portal values
+        const addMatchCategoryRow = (label: string, data: any) => {
+            const row = sheet.addRow([
+                label, data.count,
+                data.book.taxable, data.book.igst, data.book.cgst, data.book.sgst,
+                data.portal.taxable, data.portal.igst, data.portal.cgst, data.portal.sgst
+            ]);
+            this.formatSummaryRow(row);
+        };
+
+        // Helper to add a row for categories with only one side of values
+        const addSingleSidedRow = (label: string, data: any, side: 'book' | 'portal') => {
+            const rowData = [label, data.count];
+            if (side === 'book') {
+                rowData.push(data.amounts.taxable, data.amounts.igst, data.amounts.cgst, data.amounts.sgst, '', '', '', '');
+            } else { // portal
+                rowData.push('', '', '', '', data.amounts.taxable, data.amounts.igst, data.amounts.cgst, data.amounts.sgst);
             }
-        });
-        sheet.getColumn('B').width = 25; // Ensure value column has enough width
-        sheet.getColumn('B').alignment = { horizontal: 'right' };
+            const row = sheet.addRow(rowData);
+            this.formatSummaryRow(row);
+        };
+
+        // Populate Data Rows
+        addSingleSidedRow('Total Purchase Records:', summary.totalLocal, 'book');
+        addSingleSidedRow('Total Portal (GSTR-2B) Records:', summary.totalPortal, 'portal');
+        sheet.addRow([]); // Spacer
+
+        addMatchCategoryRow('Perfectly Matched Records:', summary.perfectlyMatched);
+        addMatchCategoryRow('Matched within Tolerance:', summary.toleranceMatched);
+        addMatchCategoryRow('Mismatch in Portal vs Book:', summary.mismatched);
+        addMatchCategoryRow('Potential Matches Found:', summary.potentialMatches);
+        addSingleSidedRow('Missing in Portal (GSTR-2B):', summary.missingInPortal, 'book');
+        addSingleSidedRow('Missing in Local Books:', summary.missingInLocal, 'portal');
+        addSingleSidedRow('RCM Entries:', summary.rcmEntries, 'portal');
+
+        // Styling and Sizing
+        sheet.columns.forEach(col => col.width = 15);
+        sheet.getColumn('A').width = 35;
     }
 
-    private addSummaryRow(sheet: Worksheet, label: string, value: string | number | Date, format?: string): Row {
-        const row = sheet.addRow([label, value]);
-        row.getCell(1).font = { bold: true };
-        if (format) {
-            row.getCell(2).numFmt = format;
-        } else if (typeof value === 'number') {
-            row.getCell(2).numFmt = Number.isInteger(value) ? '0' : CURRENCY_FORMAT; // Basic number format
+    private formatSummaryRow(row: Row) {
+        row.getCell(2).numFmt = '#,##0'; // Count
+        for (let i = 3; i <= 10; i++) {
+            const cell = row.getCell(i);
+            if (cell.value !== '' && cell.value !== null) {
+                 cell.numFmt = CURRENCY_FORMAT;
+            }
         }
-        return row;
     }
 
     private createMatchedDetailsSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
@@ -190,7 +201,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
 
     private createPerfectlyMatchedSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
         const sheet = workbook.addWorksheet('Perfectly Matched');
-        const headers = ['Supplier GSTIN', 'Supplier Name', 'Inv No', 'Date', 'Taxable Amt', 'Total Tax', 'Inv Value',
+        const headers = ['Supplier GSTIN', 'Supplier Name', 'Inv No', 'Date', 'Taxable Amt', 'IGST', 'CGST', 'SGST', 'Inv Value',
             'Source', 'Filing Date', 'Type', 'localVno', 'Document Type'];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -202,14 +213,13 @@ export class ReportGeneratorService implements IReportGeneratorService {
                     // Use local or portal record - should be identical for perfectly matched
                     const record = match.localRecord;
                     const portal = match.portalRecord;
-                    //  let supDate = parsePortalDate(portal.supfileDate)?.toLocaleDateString()
                     let parseDate = formatDateToDDMMYYYY(portal.supfileDate)
                     const row = sheet.addRow([
                         gstin, supplierData.supplierName ?? '', record.invoiceNumberRaw, record.date,
-                        record.taxableAmount, record.totalTax, record.invoiceValue, portal.supSource, parseDate,
+                        record.taxableAmount, record.igst, record.cgst, record.sgst, record.invoiceValue, portal.supSource, parseDate,
                         record.invType, record.vno, record.documentType
                     ]);
-                    this.formatDataRow(row, [4], [5, 6, 7]); // Date Col 4, Currency Cols 5,6,7
+                    this.formatDataRow(row, [4], [5, 6, 7, 8]); // Date Col 4, Currency Cols 5,6,7,8
                 });
         });
         this.autoFitColumns(sheet, headers);
@@ -219,8 +229,8 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('Matched (Tolerance)');
         const headers = [
             'Supplier GSTIN', 'Supplier Name',
-            'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
-            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
+            'Local Inv No', 'Local Date', 'Local Taxable', 'Local IGST', 'Local CGST', 'Local SGST', 'Local Value',
+            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal IGST', 'Portal CGST', 'Portal SGST', 'Portal Value',
             'Taxable Diff', 'Tax Diff', 'Tolerance Notes', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
@@ -237,12 +247,12 @@ export class ReportGeneratorService implements IReportGeneratorService {
 
                     const row = sheet.addRow([
                         gstin, supplierData.supplierName ?? '',
-                        match.localRecord.invoiceNumberRaw, match.localRecord.date, match.localRecord.taxableAmount, match.localRecord.totalTax, match.localRecord.invoiceValue,
-                        match.portalRecord.invoiceNumberRaw, match.portalRecord.date, match.portalRecord.taxableAmount, match.portalRecord.totalTax, match.portalRecord.invoiceValue,
+                        match.localRecord.invoiceNumberRaw, match.localRecord.date, match.localRecord.taxableAmount, match.localRecord.igst, match.localRecord.cgst, match.localRecord.sgst, match.localRecord.invoiceValue,
+                        match.portalRecord.invoiceNumberRaw, match.portalRecord.date, match.portalRecord.taxableAmount, match.portalRecord.igst, match.portalRecord.cgst, match.portalRecord.sgst, match.portalRecord.invoiceValue,
                         taxableDiff, taxDiff, toleranceNotes, match.localRecord.invType, match.localRecord.vno, match.localRecord.documentType
                     ]);
-                    // Date cols 4, 9. Currency cols 5,6,7, 10,11,12, 13,14
-                    this.formatDataRow(row, [4, 9], [5, 6, 7, 10, 11, 12, 13, 14]);
+                    // Date cols 4, 10. Currency cols 5,6,7,8, 11,12,13,14, 15,16
+                    this.formatDataRow(row, [4, 10], [5, 6, 7, 8, 11, 12, 13, 14, 15, 16]);
                 });
         });
         this.autoFitColumns(sheet, headers);
@@ -252,8 +262,8 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('Mismatched Amounts');
         const headers = [
             'Supplier GSTIN', 'Supplier Name',
-            'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
-            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
+            'Local Inv No', 'Local Date', 'Local Taxable', 'Local IGST', 'Local CGST', 'Local SGST', 'Local Value',
+            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal IGST', 'Portal CGST', 'Portal SGST', 'Portal Value',
             'Taxable Diff', 'Tax Diff', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
@@ -265,13 +275,13 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 const taxableDiff = mismatch.localRecord.taxableAmount - mismatch.portalRecord.taxableAmount;
                 const taxDiff = mismatch.localRecord.totalTax - mismatch.portalRecord.totalTax;
                 const row = sheet.addRow([gstin, supplierData.supplierName ?? '',
-                    mismatch.localRecord.invoiceNumberRaw, mismatch.localRecord.date, mismatch.localRecord.taxableAmount, mismatch.localRecord.totalTax, mismatch.localRecord.invoiceValue,
-                    mismatch.portalRecord.invoiceNumberRaw, mismatch.portalRecord.date, mismatch.portalRecord.taxableAmount, mismatch.portalRecord.totalTax, mismatch.portalRecord.invoiceValue,
+                    mismatch.localRecord.invoiceNumberRaw, mismatch.localRecord.date, mismatch.localRecord.taxableAmount, mismatch.localRecord.igst, mismatch.localRecord.cgst, mismatch.localRecord.sgst, mismatch.localRecord.invoiceValue,
+                    mismatch.portalRecord.invoiceNumberRaw, mismatch.portalRecord.date, mismatch.portalRecord.taxableAmount, mismatch.portalRecord.igst, mismatch.portalRecord.cgst, mismatch.portalRecord.sgst, mismatch.portalRecord.invoiceValue,
                     taxableDiff, taxDiff, mismatch.localRecord.invType, mismatch.localRecord.vno, mismatch.portalRecord.documentType
                 ]);
-                this.formatDataRow(row, [4, 9], [5, 6, 7, 10, 11, 12, 13, 14]);
+                this.formatDataRow(row, [4, 10], [5, 6, 7, 8, 11, 12, 13, 14, 15, 16]);
             });
-        });;
+        });
         this.autoFitColumns(sheet, headers);
     }
 
@@ -279,7 +289,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('Missing in Portal (GSTR-2B)');
         const headers = [
             'Supplier GSTIN', 'Supplier Name', 'Local Inv No', 'Local Date',
-            'Local Taxable Amt', 'Local Total Tax', 'Local Inv Value', 'Type', 'localVno', 'Document Type'
+            'Local Taxable Amt', 'Local IGST', 'Local CGST', 'Local SGST', 'Local Inv Value', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -293,14 +303,16 @@ export class ReportGeneratorService implements IReportGeneratorService {
                     record.invoiceNumberRaw,
                     record.date,
                     record.taxableAmount,
-                    record.totalTax,
+                    record.igst,
+                    record.cgst,
+                    record.sgst,
                     record.invoiceValue,
                     record.invType,
                     record.vno,
                     record.documentType
                 ]);
                 // Apply formatting
-                this.formatDataRow(row, [4], [5, 6, 7]);
+                this.formatDataRow(row, [4], [5, 6, 7, 8]);
             });
         });
 
@@ -311,7 +323,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('Missing in Book');
         const headers = [
             'Supplier GSTIN', 'Supplier Name', 'Portal Inv No', 'Portal Date',
-            'Portal Taxable Amt', 'Portal Total Tax', 'Portal Inv Value', 'Document Type'
+            'Portal Taxable Amt', 'Portal IGST', 'Portal CGST', 'Portal SGST', 'Portal Inv Value', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -325,12 +337,14 @@ export class ReportGeneratorService implements IReportGeneratorService {
                     record.invoiceNumberRaw,
                     record.date,
                     record.taxableAmount,
-                    record.totalTax,
+                    record.igst,
+                    record.cgst,
+                    record.sgst,
                     record.invoiceValue,
                     record.documentType
                 ]);
                 // Apply formatting
-                this.formatDataRow(row, [4], [5, 6, 7]);
+                this.formatDataRow(row, [4], [5, 6, 7, 8]);
             });
         });
 
@@ -342,8 +356,8 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('Potential Matches');
         const headers = [
             'Supplier GSTIN', 'Supplier Name',
-            'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax',
-            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax',
+            'Local Inv No', 'Local Date', 'Local Taxable', 'Local IGST', 'Local CGST', 'Local SGST',
+            'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal IGST', 'Portal CGST', 'Portal SGST',
             'Similarity Method', 'Similarity Score', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
@@ -353,18 +367,18 @@ export class ReportGeneratorService implements IReportGeneratorService {
             supplierData.potentialMatches?.forEach(potential => { // Iterate new array
                 const row = sheet.addRow([
                     gstin, supplierData.supplierName ?? '',
-                    potential.localRecord.invoiceNumberRaw, potential.localRecord.date, potential.localRecord.taxableAmount, potential.localRecord.totalTax,
-                    potential.portalRecord.invoiceNumberRaw, potential.portalRecord.date, potential.portalRecord.taxableAmount, potential.portalRecord.totalTax,
+                    potential.localRecord.invoiceNumberRaw, potential.localRecord.date, potential.localRecord.taxableAmount, potential.localRecord.igst, potential.localRecord.cgst, potential.localRecord.sgst,
+                    potential.portalRecord.invoiceNumberRaw, potential.portalRecord.date, potential.portalRecord.taxableAmount, potential.portalRecord.igst, potential.portalRecord.cgst, potential.portalRecord.sgst,
                     potential.similarityMethod ?? '', // Show how match was found
                     potential.similarityScore ?? '',  // Show score (e.g., Levenshtein distance)
                     potential.localRecord.invType,
                     potential.localRecord.vno,
                     potential.localRecord.documentType
                 ]);
-                // Date cols 4, 8. Currency cols 5,6, 9,10. Score col 12 maybe general.
-                this.formatDataRow(row, [4, 8], [5, 6, 9, 10]);
+                // Date cols 4, 9. Currency cols 5,6,7,8, 10,11,12,13. Score col 15 maybe general.
+                this.formatDataRow(row, [4, 9], [5, 6, 7, 8, 10, 11, 12, 13]);
                 // Format score as number if it's numeric
-                if (typeof potential.similarityScore === 'number') { row.getCell(12).numFmt = '0'; }
+                if (typeof potential.similarityScore === 'number') { row.getCell(15).numFmt = '0'; }
             });
         });
         this.autoFitColumns(sheet, headers);
@@ -375,7 +389,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('ITC Register');
         const headers = [
             'Supplier GSTIN', 'Supplier Name', 'Local Inv No', 'Local Date',
-            'Local Taxable Amt', 'Local Total Tax', 'Local Inv Value',
+            'Local Taxable Amt', 'Local IGST', 'Local CGST', 'Local SGST', 'Local Inv Value',
             'Type', 'localVno', 'Document Type', 'Recon Remark' // <-- New Remark column
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
@@ -397,15 +411,17 @@ export class ReportGeneratorService implements IReportGeneratorService {
                     record.invoiceNumberRaw ?? '',
                     record.date, // Assumes date is valid Date object or null after sanitization
                     record.taxableAmount ?? 0, // Default to 0 if null/undefined
-                    record.totalTax ?? 0,
+                    record.igst ?? 0,
+                    record.cgst ?? 0,
+                    record.sgst ?? 0,
                     record.invoiceValue ?? 0,
                     record.invType ?? '',
                     record.vno ?? '',
                     record.documentType ?? '',
                     remark // The calculated remark
                 ]);
-                // Apply formatting: Date Col 4, Currency Cols 5, 6, 7
-                this.formatDataRow(row, [4], [5, 6, 7]);
+                // Apply formatting: Date Col 4, Currency Cols 5, 6, 7, 8
+                this.formatDataRow(row, [4], [5, 6, 7, 8]);
             };
 
             // 1. Process Perfectly Matched Records
@@ -681,11 +697,11 @@ export class ReportGeneratorService implements IReportGeneratorService {
             return;
         }
 
-                this.logger.info(`Creating 'RCM Entries' sheet with ${reverseChargeInvoices.length} records.`);
+        this.logger.info(`Creating 'RCM Entries' sheet with ${reverseChargeInvoices.length} records.`);
         const sheet = workbook.addWorksheet('RCM Entries');
         const headers = [
             'Supplier GSTIN', 'Supplier Name', 'Portal Inv No', 'Portal Date',
-            'Portal Taxable Amt', 'Portal Total Tax', 'Portal Inv Value', 'Document Type'
+            'Portal Taxable Amt', 'Portal IGST', 'Portal CGST', 'Portal SGST', 'Portal Inv Value', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -697,22 +713,17 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 record.invoiceNumberRaw,
                 record.date,
                 record.taxableAmount,
-                record.totalTax,
+                record.igst,
+                record.cgst,
+                record.sgst,
                 record.invoiceValue,
                 record.documentType
             ]);
             // Apply formatting
-            this.formatDataRow(row, [4], [5, 6, 7]);
+            this.formatDataRow(row, [4], [5, 6, 7, 8]);
         });
 
         this.autoFitColumns(sheet, headers);
     }
 
 }
-
-// --- DI Registration ---
-// Registering the class itself as a singleton.
-// container.registerSingleton(ReportGeneratorService);
-// Optionally, use an interface token if preferred:
-// import { REPORT_GENERATOR_SERVICE_TOKEN } from './interfaces/services'; // Define token first
-// container.register(REPORT_GENERATOR_SERVICE_TOKEN, { useClass: ReportGeneratorService }, { lifecycle: Lifecycle.Singleton });

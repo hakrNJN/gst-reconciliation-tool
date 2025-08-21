@@ -90,25 +90,55 @@ export interface ReconciliationPotentialMatch {
     readonly similarityMethod?: 'Numeric' | 'Levenshtein' | 'None'; // Indicate how similarity was found
     readonly similarityScore?: number; // e.g., Levenshtein distance
 }
+
+// --- NEW DETAILED SUMMARY INTERFACES ---
+
+/** Represents the sum of monetary values for a category. */
+export interface AmountSummary {
+    taxable: number;
+    igst: number;
+    cgst: number;
+    sgst: number;
+}
+
+/** Represents a summary for a category with both Book and Portal values. */
+export interface MatchCategorySummary {
+    count: number;
+    book: AmountSummary;
+    portal: AmountSummary;
+}
+
+/** Represents a summary for a category with only one side (e.g., Missing in Portal). */
+export interface SingleSidedSummary {
+    count: number;
+    amounts: AmountSummary;
+}
+
+/** The new, detailed summary structure. */
+export interface ReconciliationSummary {
+    reconciliationTimestamp: Date;
+    totalSuppliersLocal: number;
+    totalSuppliersPortal: number;
+
+    // Categories
+    totalLocal: SingleSidedSummary;
+    totalPortal: SingleSidedSummary;
+    perfectlyMatched: MatchCategorySummary;
+    toleranceMatched: MatchCategorySummary;
+    mismatched: MatchCategorySummary;
+    potentialMatches: MatchCategorySummary;
+    missingInPortal: SingleSidedSummary;
+    missingInLocal: SingleSidedSummary;
+    rcmEntries: SingleSidedSummary;
+}
+
 /**
  * Structure holding the overall results of the reconciliation process.
  */
 export interface ReconciliationResults {
-    /** Summary statistics of the reconciliation */
-    summary: {
-        totalLocalRecords: number;
-        totalPortalRecords: number;
-        perfectlyMatchedCount: number;
-        toleranceMatchedCount: number;
-        missingInPortalCount: number;
-        missingInLocalCount: number;
-        mismatchedAmountsCount: number;
-        potentialMatchCount: number;
-        totalSuppliersLocal: number;
-        totalSuppliersPortal: number;
-        reconciliationTimestamp: Date;
-        rcmEntriesCount: number;
-    };
+    /** The new, detailed summary object */
+    summary: ReconciliationSummary;
+
     /** Detailed results grouped by Supplier GSTIN */
     details: Map<string, { // Key: Supplier GSTIN
         supplierName?: string; // Store name if available
@@ -118,7 +148,7 @@ export interface ReconciliationResults {
         mismatchedAmounts: ReconciliationMismatch[];
         potentialMatches: ReconciliationPotentialMatch[];
     }>;
+
     /** Invoices liable for reverse charge, excluded from reconciliation */
     reverseChargeLiable: InternalInvoiceRecord[];
 }
-
