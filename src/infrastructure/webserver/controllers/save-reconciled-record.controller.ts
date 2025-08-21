@@ -65,7 +65,8 @@ export class ReconciledRecordsController {
             // Reconstruct the results object with the processed Map
             const resultsForPersistence: ReconciliationResults = {
                 summary: resultsInput.summary,
-                details: detailsMap as any // Cast carefully
+                details: detailsMap as any, // Cast carefully
+                reverseChargeLiable: resultsInput.reverseChargeLiable || []
             };
 
             // Ensure summary timestamp is a Date object

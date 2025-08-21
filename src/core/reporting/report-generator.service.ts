@@ -62,6 +62,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             this.createMismatchedAmountSheet(workbook, results.details);
             this.createMissingInPortalSheet(workbook, results.details);
             this.createMissingInLocalSheet(workbook, results.details);
+            this.createReverseChargeSheet(workbook, results.reverseChargeLiable);
 
 
             // Write workbook to buffer
@@ -111,6 +112,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         this.addSummaryRow(sheet, 'Potential Matches Found:', summary.potentialMatchCount); // Add new row
         this.addSummaryRow(sheet, 'Missing in Portal (GSTR-2B):', summary.missingInPortalCount);
         this.addSummaryRow(sheet, 'Missing in Local Books:', summary.missingInLocalCount);
+        this.addSummaryRow(sheet, 'RCM Entries:', summary.rcmEntriesCount);
 
         // Style the summary sheet
         sheet.columns.forEach(column => {
@@ -673,6 +675,38 @@ export class ReportGeneratorService implements IReportGeneratorService {
         return notes.join('; ');
     }
 
+    private createReverseChargeSheet(workbook: Workbook, reverseChargeInvoices: InternalInvoiceRecord[]): void {
+        if (!reverseChargeInvoices || reverseChargeInvoices.length === 0) {
+            this.logger.info('No reverse charge liable invoices to report. Skipping sheet creation.');
+            return;
+        }
+
+                this.logger.info(`Creating 'RCM Entries' sheet with ${reverseChargeInvoices.length} records.`);
+        const sheet = workbook.addWorksheet('RCM Entries');
+        const headers = [
+            'Supplier GSTIN', 'Supplier Name', 'Portal Inv No', 'Portal Date',
+            'Portal Taxable Amt', 'Portal Total Tax', 'Portal Inv Value', 'Document Type'
+        ];
+        this.styleHeaderRow(sheet.addRow(headers), headers);
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+        reverseChargeInvoices.forEach(record => {
+            const row = sheet.addRow([
+                record.supplierGstin,
+                record.supplierName ?? '',
+                record.invoiceNumberRaw,
+                record.date,
+                record.taxableAmount,
+                record.totalTax,
+                record.invoiceValue,
+                record.documentType
+            ]);
+            // Apply formatting
+            this.formatDataRow(row, [4], [5, 6, 7]);
+        });
+
+        this.autoFitColumns(sheet, headers);
+    }
 
 }
 

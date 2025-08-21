@@ -142,7 +142,8 @@ export class ReconcileController {
             // 6. --- Prepare and Send Response ---
             const responseData = {
                 summary: results.summary,
-                details: Object.fromEntries(results.details) // Convert Map for JSON
+                details: Object.fromEntries(results.details), // Convert Map for JSON
+                reverseChargeLiable: results.reverseChargeLiable
             };
             res.status(200).json(responseData);
             this.logger.info('Reconciliation successful, results sent.');
@@ -266,7 +267,8 @@ export class ReconcileController {
                     missingInLocal: InternalInvoiceRecord[];
                     mismatchedAmounts: ReconciliationMismatch[]; // Adjust type if needed
                     potentialMatches: ReconciliationPotentialMatch[]; // Adjust type if needed
-                }>
+                }>,
+                reverseChargeLiable: resultsInput.reverseChargeLiable || []
             };
 
             // Generate Excel Report
@@ -327,7 +329,8 @@ export class ReconcileController {
              // Reconstruct the results object with the processed Map
              const resultsForPersistence: ReconciliationResults = {
                  summary: resultsInput.summary, // Summary likely needs date checks too if timestamp is string
-                 details: detailsMap as any // Cast carefully
+                 details: detailsMap as any, // Cast carefully
+                reverseChargeLiable: resultsInput.reverseChargeLiable || []
              };
 
              // Ensure summary timestamp is a Date object for prepareDataForStorage

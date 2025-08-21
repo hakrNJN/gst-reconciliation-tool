@@ -84,70 +84,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Display Table Data ---
     function displayTableData(category) {
-        if (!currentResultsData || !currentResultsData.details) {
+        console.log(`Displaying category: ${category}`); // DEBUG
+
+        if (!currentResultsData) { // Simplified check
             console.error("No results data available.");
             return;
         }
 
-        resultsTableHead.innerHTML = ''; // Clear headers
-        resultsTableBody.innerHTML = ''; // Clear body
-        resultsTableContainer.classList.add('visually-hidden'); // Hide while populating
+        resultsTableHead.innerHTML = '';
+        resultsTableBody.innerHTML = '';
+        resultsTableContainer.classList.add('visually-hidden');
         noResultsMessage.style.display = 'none';
 
         let headers = [];
         let dataRows = [];
-        const details = currentResultsData.details; // This is an object now { gstin: {...} }
 
-        // --- Collect Data Based on Category ---
-        Object.entries(details).forEach(([gstin, supplierData]) => {
-            const supplierName = supplierData.supplierName ?? '';
-            switch (category) {
-                case 'perfect':
-                    supplierData.matches
-                        ?.filter(m => m.status === 'MatchedPerfectly')
-                        .forEach(m => dataRows.push({
-                            gstin,
-                            supplierName,
-                            supfileDate: m.portalRecord.supfileDate,
-                            supSource: m.portalRecord.supSource,
-                            ...m.localRecord
-                        })); // Use local/portal data
-                    break;
-                case 'tolerance':
-                    supplierData.matches
-                        ?.filter(m => m.status === 'MatchedWithTolerance')
-                        .forEach(m => dataRows.push({
-                            gstin, supplierName, ...m, // Spread match to get local/portal records and details
-                            taxableDiff: (m.localRecord.taxableAmount - m.portalRecord.taxableAmount),
-                            taxDiff: (m.localRecord.totalTax - m.portalRecord.totalTax)
-                        }));
-                    break;
-                case 'mismatch':
-                    supplierData.mismatchedAmounts
-                        ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
-                    break;
-                case 'potential':
-                    supplierData.potentialMatches
-                        ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
-                    break;
-                case 'missingPortal':
-                    supplierData.missingInPortal
-                        ?.forEach(r => dataRows.push({ gstin, supplierName, ...r }));
-                    break;
-                case 'missingLocal':
-                    supplierData.missingInLocal
-                        ?.forEach(r => dataRows.push({ gstin, supplierName, ...r }));
-                    break;
-            }
-        });
+        if (category === 'reverseCharge') {
+            console.log('Reverse charge data from currentResultsData:', currentResultsData.reverseChargeLiable); // DEBUG
+            // Handle reverse charge data directly from the top-level property
+            const reverseChargeData = currentResultsData.reverseChargeLiable || [];
+            dataRows = reverseChargeData.map(r => ({
+                gstin: r.supplierGstin,
+                supplierName: r.supplierName, // Assuming supplierName is available
+                ...r
+            }));
+        } else if (currentResultsData.details) {
+            // Handle other categories from the details map
+            const details = currentResultsData.details;
+            Object.entries(details).forEach(([gstin, supplierData]) => {
+                const supplierName = supplierData.supplierName ?? '';
+                switch (category) {
+                    case 'perfect':
+                        supplierData.matches
+                            ?.filter(m => m.status === 'MatchedPerfectly')
+                            .forEach(m => dataRows.push({
+                                gstin,
+                                supplierName,
+                                supfileDate: m.portalRecord.supfileDate,
+                                supSource: m.portalRecord.supSource,
+                                ...m.localRecord
+                            }));
+                        break;
+                    case 'tolerance':
+                        supplierData.matches
+                            ?.filter(m => m.status === 'MatchedWithTolerance')
+                            .forEach(m => dataRows.push({
+                                gstin, supplierName, ...m,
+                                taxableDiff: (m.localRecord.taxableAmount - m.portalRecord.taxableAmount),
+                                taxDiff: (m.localRecord.totalTax - m.portalRecord.totalTax)
+                            }));
+                        break;
+                    case 'mismatch':
+                        supplierData.mismatchedAmounts
+                            ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
+                        break;
+                    case 'potential':
+                        supplierData.potentialMatches
+                            ?.forEach(m => dataRows.push({ gstin, supplierName, ...m }));
+                        break;
+                    case 'missingPortal':
+                        supplierData.missingInPortal
+                            ?.forEach(r => dataRows.push({ gstin, supplierName, ...r }));
+                        break;
+                    case 'missingLocal':
+                        supplierData.missingInLocal
+                            ?.forEach(r => dataRows.push({ gstin, supplierName, ...r }));
+                        break;
+                }
+            });
+        }
 
-        // --- Define Headers and Populate Table ---
         if (dataRows.length > 0) {
-            const sampleRow = dataRows[0]; // Use first row to determine columns
-
-            // Create header row
             const trHead = document.createElement('tr');
-            if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal') {
+            if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal' || category === 'reverseCharge') {
                 headers = ['Supplier GSTIN', 'Supplier Name', 'Invoice No', 'Date', 'Taxable Amt', 'Total Tax', 'Invoice Value',
                     'Source', 'Filing Date'
                 ];
@@ -159,18 +168,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
                     'Taxable Diff', 'Tax Diff'
                 ];
-                // Add Tolerance Notes only for 'tolerance' category
                 if (category === 'tolerance') headers.push('Tolerance Notes');
                 headers.forEach(h => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; trHead.appendChild(th); });
             }
             resultsTableHead.appendChild(trHead);
 
-
-            // Create data rows
             dataRows.forEach(rowData => {
                 const trBody = document.createElement('tr');
-                if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal') {
-
+                if (category === 'perfect' || category === 'missingPortal' || category === 'missingLocal' || category === 'reverseCharge') {
                     trBody.innerHTML = `
                         <td>${rowData.gstin ?? ''}</td>
                         <td>${rowData.supplierName ?? ''}</td>
@@ -179,15 +184,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${formatCurrency(rowData.taxableAmount)}</td>
                         <td>${formatCurrency(rowData.totalTax)}</td>
                         <td>${formatCurrency(rowData.invoiceValue)}</td>
-                        ${rowData.supSource !== 'undefined' ? `<td>${rowData.supSource}</td>` : ''}
-                        ${category === 'perfect' ? `<td>${formatDate(rowData.supfileDate)}</td>` : ''}
+                        <td>${rowData.supSource ?? ''}</td>
+                        <td>${formatDate(rowData.supfileDate)}</td>
                     `;
                 } else if (category === 'tolerance' || category === 'mismatch' || category === 'potential') {
-                    const local = rowData.localRecord || {}; // Handle potential direct properties in mismatch
+                    const local = rowData.localRecord || {};
                     const portal = rowData.portalRecord || {};
-                    const taxableDiff = rowData.taxableAmountDifference ?? rowData.taxableDiff ?? 0; // Use specific diff if available
+                    const taxableDiff = rowData.taxableAmountDifference ?? rowData.taxableDiff ?? 0;
                     const taxDiff = rowData.totalTaxDifference ?? rowData.taxDiff ?? 0;
-                    const toleranceNotes = category === 'tolerance' ? (rowData.toleranceDetails ? Object.entries(rowData.toleranceDetails).filter(([k, v]) => v === true).map(([k]) => k).join('; ') : '') : ''; // Simplified notes
+                    const toleranceNotes = category === 'tolerance' ? (rowData.toleranceDetails ? Object.entries(rowData.toleranceDetails).filter(([k, v]) => v === true).map(([k]) => k).join('; ') : '') : '';
 
                     trBody.innerHTML = `
                         <td>${rowData.gstin ?? ''}</td>
@@ -212,12 +217,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             resultsTableContainer.classList.remove('visually-hidden');
             tableCaption.textContent = `${resultsCategorySelect.options[resultsCategorySelect.selectedIndex].text} (${dataRows.length} Records)`;
-
         } else {
-            // Show no results message if data for category is empty
             noResultsMessage.textContent = `No records found for category: ${resultsCategorySelect.options[resultsCategorySelect.selectedIndex].text}.`;
             noResultsMessage.style.display = 'block';
-            tableCaption.textContent = ''; // Clear caption
+            tableCaption.textContent = '';
         }
     }
 
@@ -286,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok) {
                 const results = await response.json();
+                console.log('Received reconciliation results:', results); // DEBUG
                 currentResultsData = results; // Store results
 
                 showStatus('Reconciliation successful! Select a category below to view details.', 'success');

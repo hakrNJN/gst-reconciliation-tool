@@ -107,6 +107,7 @@ export interface ReconciliationResults {
         totalSuppliersLocal: number;
         totalSuppliersPortal: number;
         reconciliationTimestamp: Date;
+        rcmEntriesCount: number;
     };
     /** Detailed results grouped by Supplier GSTIN */
     details: Map<string, { // Key: Supplier GSTIN
@@ -117,5 +118,7 @@ export interface ReconciliationResults {
         mismatchedAmounts: ReconciliationMismatch[];
         potentialMatches: ReconciliationPotentialMatch[];
     }>;
+    /** Invoices liable for reverse charge, excluded from reconciliation */
+    reverseChargeLiable: InternalInvoiceRecord[];
 }
 

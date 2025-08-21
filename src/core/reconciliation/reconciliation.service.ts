@@ -36,13 +36,18 @@ export class ReconciliationService implements IReconciliationService {
         options?: ReconciliationOptions // Options currently not used, but available for future extension
     ): Promise<ReconciliationResults> {
 
+        // --- Separate Reverse Charge Invoices ---
+        const reverseChargeInvoices = portalData.filter(p => p.reverseCharge === true);
+        const nonReverseChargePortalData = portalData.filter(p => p.reverseCharge !== true);
+        this.logger.info(`Separated ${reverseChargeInvoices.length} reverse charge invoices.`);
+
         // --- Determine effective tolerances and date strategy ---
         const effectiveToleranceAmount = options?.toleranceAmount ?? config.reconciliation.toleranceAmount;
         const effectiveToleranceTax = options?.toleranceTax ?? config.reconciliation.toleranceTax;
         const effectiveDateStrategy = options?.dateMatchStrategy ?? 'month'; // Default to 'month'
         const reconciliationScope = options?.reconciliationScope ?? 'all'; // Default to all
 
-        this.logger.info(`Starting reconciliation. Scope: ${reconciliationScope}, Local: ${localData.length}, Portal: ${portalData.length}`);
+        this.logger.info(`Starting reconciliation. Scope: ${reconciliationScope}, Local: ${localData.length}, Portal: ${nonReverseChargePortalData.length}`);
         this.logger.info(`Using Tolerances: Amount=±${effectiveToleranceAmount}, Tax=±${effectiveToleranceTax}`);
         this.logger.info(`Using Date Match Strategy: ${effectiveDateStrategy}`);
 
@@ -54,7 +59,7 @@ export class ReconciliationService implements IReconciliationService {
             return false;
         };
         const filteredLocalData = localData.filter(filterByScope);
-        const filteredPortalData = portalData.filter(filterByScope);
+        const filteredPortalData = nonReverseChargePortalData.filter(filterByScope);
 
         // --- Initialize results AFTER filtering ---
         const localMapBySupplier = this.groupDataBySupplier(filteredLocalData); // Group filtered data
@@ -76,7 +81,8 @@ export class ReconciliationService implements IReconciliationService {
                 missingInLocalCount: 0,
                 totalSuppliersLocal: 0,
                 totalSuppliersPortal: 0,
-                reconciliationTimestamp: new Date()
+                reconciliationTimestamp: new Date(),
+                rcmEntriesCount: reverseChargeInvoices.length
             },
             details: new Map<string, {
                 supplierName?: string;
@@ -85,7 +91,8 @@ export class ReconciliationService implements IReconciliationService {
                 missingInLocal: InternalInvoiceRecord[];
                 mismatchedAmounts: ReconciliationMismatch[];
                 potentialMatches: ReconciliationPotentialMatch[];
-            }>()
+            }>(),
+            reverseChargeLiable: reverseChargeInvoices
         };
 
         const matchedLocalRecordIds = new Set<string>();
