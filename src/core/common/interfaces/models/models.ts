@@ -5,15 +5,15 @@
  */
 export interface InternalInvoiceRecord {
     /** Unique identifier assigned during processing */
-    id: string; 
+    id: string;
     /** Source of the record ('local' or 'portal') */
     source: 'local' | 'portal'; // (or assign during parsing)
     /** Supplier GST Identification Number */
-    supplierGstin: string; 
+    supplierGstin: string;
     /** Supplier Name (optional, might only be in portal data) */
-    supplierName?: string; 
+    supplierName?: string;
     /** Original invoice number string as it appeared in the source */
-    invoiceNumberRaw: string; 
+    invoiceNumberRaw: string;
     /** Normalized invoice number used for matching */
     invoiceNumberNormalized: string; // (will be set later)
     /** Invoice date */
@@ -22,23 +22,23 @@ export interface InternalInvoiceRecord {
     dateMonthYear: string;  //(will be set later)
     dateQuarter: string; // (will be set later)
     /** Taxable value (value before tax) */
-    taxableAmount: number; 
+    taxableAmount: number;
     /** Integrated Goods and Services Tax amount */
-    igst: number; 
+    igst: number;
     /** Central Goods and Services Tax amount */
-    cgst: number; 
+    cgst: number;
     /** State Goods and Services Tax amount */
-    sgst: number; 
+    sgst: number;
     /** Total tax amount (IGST or CGST + SGST) */
     totalTax: number; // (will be calculated later)
     /** Total Invoice Value (Taxable Amount + Total Tax) - Calculated or from source */
-    invoiceValue: number; 
+    invoiceValue: number;
     /** Line number from the original file (optional, for tracing) */
-    originalLineNumber?: number; 
+    originalLineNumber?: number;
     /** Raw data record from parsing (optional, for debugging) */
-    rawData?: any; 
+    rawData?: any;
     invType?: number | string;
-     // --- Fields primarily from Portal Data (GSTR-2B) ---
+    // --- Fields primarily from Portal Data (GSTR-2B) ---
     /** Place of Supply (e.g., state code) */
     placeOfSupply?: string;
     /** Is Reverse Charge applicable? ('Y'/'N' from portal -> boolean) */
@@ -47,8 +47,8 @@ export interface InternalInvoiceRecord {
     itcAvailable?: boolean;
     /** Reason code/text if ITC is not available */
     itcReason?: string;
-   /** Unified Document Type: 'INV' (Invoice/B2B), 'C' (Credit Note), 'D' (Debit Note) */
-    documentType?:'INV' | 'C' | 'D' | string; // To distinguish invoices from notes if parsing both
+    /** Unified Document Type: 'INV' (Invoice/B2B), 'C' (Credit Note), 'D' (Debit Note) */
+    documentType?: 'INV' | 'C' | 'D' | string; // To distinguish invoices from notes if parsing both
     financialYear: string; // Financial year (e.g., "2023-24") - calculated from date
     supfileDate?: Date | null; // Date when the file was processed
     supSource?: string; // Source of the record (e.g., "GSTR-2B", "GSTR-1", etc.)
@@ -65,7 +65,7 @@ export interface ReconciliationMatch {
     /** The record from the GSTR-2B portal data */
     readonly portalRecord: Readonly<InternalInvoiceRecord>; // Use Readonly here if desired
     /** Status indicating perfect match or match within tolerance */
-    readonly status: 'MatchedPerfectly' | 'MatchedWithTolerance';
+    readonly status: 'MatchedPerfectly' | 'MatchedWithTolerance' | 'PotentialMatch'; // Use string literal types for clarity
     /** Details about which fields required tolerance for matching */
     readonly toleranceDetails: {
         readonly taxableAmount: boolean;
@@ -100,9 +100,9 @@ export interface ReconciliationResults {
         totalPortalRecords: number;
         perfectlyMatchedCount: number;
         toleranceMatchedCount: number;
-        missingInPortalCount: number; 
-        missingInLocalCount: number; 
-        mismatchedAmountsCount: number; 
+        missingInPortalCount: number;
+        missingInLocalCount: number;
+        mismatchedAmountsCount: number;
         potentialMatchCount: number;
         totalSuppliersLocal: number;
         totalSuppliersPortal: number;

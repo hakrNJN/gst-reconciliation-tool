@@ -138,12 +138,12 @@ export class ReconciledRecordRepository implements IReconciledRecordRepository {
                 const entity = new Gstr2bReconciledRecord();
                 entity.supplierGstin = dto.supplierGstin;
                 entity.supplierName = dto.supplierName;
-                entity.localInvoiceNumber = dto.localInvoiceNumber;
+                entity.localInvoiceNumber = String(dto.localInvoiceNumber);
                 entity.localDate = dto.localDate; // Assumes Date object or null
                 entity.localInvoiceValue = dto.localInvoiceValue;
             
                 entity.localDocType = dto.localDocType;
-                entity.portalInvoiceNumber = dto.portalInvoiceNumber;
+                entity.portalInvoiceNumber = String(dto.portalInvoiceNumber);
                 entity.portalDate = dto.portalDate;
                 entity.remark = dto.remark; // Matches enum/string type
                 entity.reconciliationDate = dto.reconciliationDate; // Assumes Date object

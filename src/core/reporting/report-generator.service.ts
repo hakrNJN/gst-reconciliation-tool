@@ -1,17 +1,15 @@
 // src/core/reporting/report-generator.service.ts
 import ExcelJS, { Row, Workbook, Worksheet } from 'exceljs'; // Import exceljs
 import 'reflect-metadata'; // DI requirement
-import { container, inject, injectable, singleton } from 'tsyringe';
+import { inject, injectable, singleton } from 'tsyringe';
 import { Logger } from 'winston';
 
 import { LOGGER_TOKEN } from '../../infrastructure/logger';
 import { AppError } from '../common/errors'; // If needed for specific reporting errors
 import {
     InternalInvoiceRecord,
-    ReconciliationMatch,
-    ReconciliationMismatch, // Make sure this is imported
-    ReconciliationPotentialMatch, // Make sure this is imported
-    ReconciliationResults,
+    ReconciliationMatch, // Make sure this is imported
+    ReconciliationResults
 } from '../common/interfaces/models';
 import { formatDateToDDMMYYYY } from '../common/utils';
 import { IReportGeneratorService, ReportOptions, StorableReconciliationRecord } from './interfaces/services';
@@ -25,7 +23,7 @@ const REMARK_MATCHED_PERFECTLY = 'Matched Perfectly';
 const REMARK_MATCHED_TOLERANCE = 'Matched (Tolerance)';
 const REMARK_MISMATCHED_AMOUNT = 'Mismatched Amounts';
 const REMARK_MISSING_IN_PORTAL = 'Missing in Portal (GSTR-2B)';
-const REMARK_POTENTIAL_MATCH = 'Potential Match';
+const REMARK_POTENTIAL_MATCH = 'Manually Matched';
 
 @singleton()
 @injectable()
@@ -45,15 +43,15 @@ export class ReportGeneratorService implements IReportGeneratorService {
         options?: ReportOptions // Options currently not used, but available
     ): Promise<Buffer> {
         this.logger.info('Generating reconciliation Excel report...');
-         // Ensure timestamp is a Date object (consider moving this validation upstream if possible)
+        // Ensure timestamp is a Date object (consider moving this validation upstream if possible)
         if (!(results.summary.reconciliationTimestamp instanceof Date)) {
             results.summary.reconciliationTimestamp = new Date(results.summary.reconciliationTimestamp);
         }
         try {
             const workbook = new ExcelJS.Workbook();
             const timestamp = results.summary.reconciliationTimestamp instanceof Date
-                              ? results.summary.reconciliationTimestamp
-                              : new Date(); // Fallback if conversion failed or was missing
+                ? results.summary.reconciliationTimestamp
+                : new Date(); // Fallback if conversion failed or was missing
             this.setWorkbookProperties(workbook, results.summary.reconciliationTimestamp);
             this.createSummarySheet(workbook, results.summary);
             // --- Create Consolidated Local Records Sheet (ITC Register View) ---
@@ -69,7 +67,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             // Write workbook to buffer
             const buffer = await workbook.xlsx.writeBuffer();
             this.logger.info('Excel report generated successfully.');
-            return buffer as Buffer; // Cast needed as writeBuffer returns ArrayBuffer | Buffer
+            return buffer as unknown as Buffer; // Cast needed as writeBuffer returns ArrayBuffer | Buffer
 
         } catch (error: any) {
             this.logger.error('Failed to generate Excel report:', { message: error.message, stack: error.stack });
@@ -191,7 +189,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
     private createPerfectlyMatchedSheet(workbook: Workbook, details: ReconciliationResults['details']): void {
         const sheet = workbook.addWorksheet('Perfectly Matched');
         const headers = ['Supplier GSTIN', 'Supplier Name', 'Inv No', 'Date', 'Taxable Amt', 'Total Tax', 'Inv Value',
-            'Source', 'Filing Date', 'Type', 'localVno','Document Type'];
+            'Source', 'Filing Date', 'Type', 'localVno', 'Document Type'];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
@@ -221,7 +219,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Supplier GSTIN', 'Supplier Name',
             'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax', 'Local Value',
             'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax', 'Portal Value',
-            'Taxable Diff', 'Tax Diff', 'Tolerance Notes', 'Type', 'localVno','Document Type'
+            'Taxable Diff', 'Tax Diff', 'Tolerance Notes', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -267,7 +265,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 const row = sheet.addRow([gstin, supplierData.supplierName ?? '',
                     mismatch.localRecord.invoiceNumberRaw, mismatch.localRecord.date, mismatch.localRecord.taxableAmount, mismatch.localRecord.totalTax, mismatch.localRecord.invoiceValue,
                     mismatch.portalRecord.invoiceNumberRaw, mismatch.portalRecord.date, mismatch.portalRecord.taxableAmount, mismatch.portalRecord.totalTax, mismatch.portalRecord.invoiceValue,
-                    taxableDiff, taxDiff, mismatch.localRecord.invType, mismatch.localRecord.vno,mismatch.portalRecord.documentType
+                    taxableDiff, taxDiff, mismatch.localRecord.invType, mismatch.localRecord.vno, mismatch.portalRecord.documentType
                 ]);
                 this.formatDataRow(row, [4, 9], [5, 6, 7, 10, 11, 12, 13, 14]);
             });
@@ -279,7 +277,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         const sheet = workbook.addWorksheet('Missing in Portal (GSTR-2B)');
         const headers = [
             'Supplier GSTIN', 'Supplier Name', 'Local Inv No', 'Local Date',
-            'Local Taxable Amt', 'Local Total Tax', 'Local Inv Value', 'Type', 'localVno','Document Type'
+            'Local Taxable Amt', 'Local Total Tax', 'Local Inv Value', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -344,7 +342,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             'Supplier GSTIN', 'Supplier Name',
             'Local Inv No', 'Local Date', 'Local Taxable', 'Local Tax',
             'Portal Inv No', 'Portal Date', 'Portal Taxable', 'Portal Tax',
-            'Similarity Method', 'Similarity Score', 'Type', 'localVno','Document Type'
+            'Similarity Method', 'Similarity Score', 'Type', 'localVno', 'Document Type'
         ];
         this.styleHeaderRow(sheet.addRow(headers), headers);
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -387,10 +385,10 @@ export class ReportGeneratorService implements IReportGeneratorService {
 
             // Helper function to add a row consistently
             const addLocalRecordRow = (record: InternalInvoiceRecord, remark: string) => {
-                 if (!record) {
+                if (!record) {
                     this.logger.warn(`Skipping row creation due to missing record data for GSTIN ${gstin} with remark ${remark}`);
                     return; // Avoid errors if a record is unexpectedly null/undefined
-                 }
+                }
                 const row = sheet.addRow([
                     gstin,
                     supplierName, // Use consistent supplier name from supplierData
@@ -423,7 +421,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             (supplierData.mismatchedAmounts ?? []).forEach(mismatch => addLocalRecordRow(mismatch.localRecord, REMARK_MISMATCHED_AMOUNT));
 
             // 4. Process Potential Match Records
-             // Ensure potentialMatches is an array before iterating
+            // Ensure potentialMatches is an array before iterating
             (supplierData.potentialMatches ?? []).forEach(potential => addLocalRecordRow(potential.localRecord, REMARK_POTENTIAL_MATCH));
 
             // 5. Process Records Missing in Portal (These are local records)
@@ -435,7 +433,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
         this.autoFitColumns(sheet, headers);
         this.logger.debug('Consolidated local records sheet created.');
     }
-    
+
     /**
      * Prepares a structured list of matched (perfect/tolerance) and mismatched records
      * for database storage, extracting only the necessary fields.
@@ -474,15 +472,17 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 let remark: StorableReconciliationRecord['remark'];
 
                 if (!local) {
-                     this.logger.warn(`Skipping matched record for GSTIN ${gstin} due to missing localRecord data.`);
-                     return; // Skip if essential local data is missing
-                 }
+                    this.logger.warn(`Skipping matched record for GSTIN ${gstin} due to missing localRecord data.`);
+                    return; // Skip if essential local data is missing
+                }
 
 
                 if (match.status === 'MatchedPerfectly') {
                     remark = REMARK_MATCHED_PERFECTLY;
                 } else if (match.status === 'MatchedWithTolerance') {
                     remark = REMARK_MATCHED_TOLERANCE;
+                } else if (match.status === 'PotentialMatch') {
+                    remark = REMARK_POTENTIAL_MATCH;
                 } else {
                     // Should not happen based on filtering, but good practice to handle
                     this.logger.warn(`Unexpected match status "${match.status}" for GSTIN ${gstin}, Invoice ${local.invoiceNumberRaw}. Skipping storage.`);
@@ -492,14 +492,14 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 storableRecords.push({
                     supplierGstin: gstin,
                     supplierName: supplierName,
-                    localInvoiceNumber: local.invoiceNumberRaw ?? 'N/A', // Provide fallback
+                    localInvoiceNumber: String(local.invoiceNumberRaw) ?? 'N/A', // Provide fallback
                     localDate: local.date, // Assumes date is Date object or null
                     localInvoiceValue: local.invoiceValue ?? 0,
-                    localConum: local.conum, // <-- The new field
+                    localConum: Number(local.conum), // <-- The new field
                     localVno: local.vno,
                     localInvType: local.invType,
                     localDocType: local.documentType,
-                    portalInvoiceNumber: portal?.invoiceNumberRaw, // Include portal info
+                    portalInvoiceNumber: String(portal?.invoiceNumberRaw), // Include portal info
                     portalDate: portal?.date,                     // Include portal info
                     remark: remark,
                     reconciliationDate: reconciliationDate,
@@ -512,7 +512,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 const local = mismatch.localRecord;
                 const portal = mismatch.portalRecord; // Mismatches always have both
 
-                 if (!local || !portal) {
+                if (!local || !portal) {
                     this.logger.warn(`Skipping mismatched record for GSTIN ${gstin} due to missing local or portal record data.`);
                     return; // Skip if essential data is missing
                 }
@@ -520,23 +520,49 @@ export class ReportGeneratorService implements IReportGeneratorService {
                 storableRecords.push({
                     supplierGstin: gstin,
                     supplierName: supplierName,
-                    localInvoiceNumber: local.invoiceNumberRaw ?? 'N/A',
+                    localInvoiceNumber: String(local.invoiceNumberRaw) ?? 'N/A',
                     localDate: local.date,
                     localInvoiceValue: local.invoiceValue ?? 0,
-                    localConum: local.conum, // <-- The new field
+                    localConum: Number(local.conum), // <-- The new field
                     localVno: local.vno,
                     localInvType: local.invType,
                     localDocType: local.documentType, // Or decide if portal.documentType is more relevant here
-                    portalInvoiceNumber: portal.invoiceNumberRaw, // Include portal info
+                    portalInvoiceNumber: String(portal.invoiceNumberRaw), // Include portal info
                     portalDate: portal.date,                     // Include portal info
                     remark: REMARK_MISMATCHED_AMOUNT,
                     reconciliationDate: reconciliationDate,
-                     // localRecordId: local.id // Optional: uncomment if needed
+                    // localRecordId: local.id // Optional: uncomment if needed
                 });
             });
 
-            // Note: Potential Matches and Missing records are NOT included in this specific output
-            // as per the requirement focusing on definite matches and mismatches.
+            // --- Process Potential Match Records ---
+            supplierData.potentialMatches?.forEach(potential => {
+                const local = potential.localRecord;
+                const portal = potential.portalRecord;
+
+                if (!local || !portal) {
+                    this.logger.warn(`Skipping potential match for GSTIN ${gstin} due to missing local or portal record data.`);
+                    return; // Skip if essential data is missing
+                }
+
+                storableRecords.push({
+                    supplierGstin: gstin,
+                    supplierName: supplierName,
+                    localInvoiceNumber: String(local.invoiceNumberRaw) ?? 'N/A',
+                    localDate: local.date,
+                    localInvoiceValue: local.invoiceValue ?? 0,
+                    localConum: Number(local.conum),
+                    localVno: local.vno,
+                    localInvType: local.invType,
+                    localDocType: local.documentType,
+                    portalInvoiceNumber: String(portal.invoiceNumberRaw),
+                    portalDate: portal.date,
+                    remark: REMARK_POTENTIAL_MATCH,
+                    reconciliationDate: reconciliationDate,
+                });
+            });
+
+            // Note: Missing records are NOT included in this specific output.
         });
 
         this.logger.info(`Prepared ${storableRecords.length} records for storage.`);
@@ -570,7 +596,7 @@ export class ReportGeneratorService implements IReportGeneratorService {
             };
         }
     }
- 
+
     /** Applies standard date and currency formats to cells in a row */
     private formatDataRow(row: Row, dateColIndices: number[], currencyColIndices: number[]): void {
         dateColIndices.forEach(idx => {

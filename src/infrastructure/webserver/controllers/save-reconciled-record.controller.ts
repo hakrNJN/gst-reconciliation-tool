@@ -1,19 +1,19 @@
 // src/infrastructure/webserver/controllers/reconciled-records.controller.ts
+import { NextFunction, Request, Response } from 'express';
 import 'reflect-metadata';
-import { Request, Response, NextFunction } from 'express';
 import { inject, injectable } from 'tsyringe';
 import winston from 'winston';
 
 // --- Core Service/Repository Interfaces & Tokens ---
+import { ReconciliationResults } from '../../../core/common/interfaces/models';
 import { IReconciledRecordRepository, RECONCILED_RECORD_REPOSITORY_TOKEN } from '../../../core/common/interfaces/repositories/IReconciledRecordRepository';
 import { ReportGeneratorService } from '../../../core/reporting/report-generator.service'; // Prepare data logic resides here
-import { ReconciliationResults } from '../../../core/common/interfaces/models';
 
 // --- Infrastructure Imports ---
 import { LOGGER_TOKEN } from '../../logger';
 
 // --- Error Handling ---
-import { AppError, ValidationError } from '../../../core/common/errors';
+import { ValidationError } from '../../../core/common/errors';
 
 @injectable()
 export class ReconciledRecordsController {
@@ -69,17 +69,17 @@ export class ReconciledRecordsController {
             };
 
             // Ensure summary timestamp is a Date object
-             if (resultsForPersistence.summary.reconciliationTimestamp && !(resultsForPersistence.summary.reconciliationTimestamp instanceof Date)) {
-                 try {
-                      const parsedDate = new Date(resultsForPersistence.summary.reconciliationTimestamp);
-                      if(isNaN(parsedDate.getTime())) throw new Error('Invalid date string');
-                     resultsForPersistence.summary.reconciliationTimestamp = parsedDate;
-                 } catch {
-                      throw new ValidationError('Invalid reconciliationTimestamp in summary.');
-                 }
-             } else if (!resultsForPersistence.summary.reconciliationTimestamp) {
-                 throw new ValidationError('Missing reconciliationTimestamp in summary.');
-             }
+            if (resultsForPersistence.summary.reconciliationTimestamp && !(resultsForPersistence.summary.reconciliationTimestamp instanceof Date)) {
+                try {
+                    const parsedDate = new Date(resultsForPersistence.summary.reconciliationTimestamp);
+                    if (isNaN(parsedDate.getTime())) throw new Error('Invalid date string');
+                    resultsForPersistence.summary.reconciliationTimestamp = parsedDate;
+                } catch {
+                    throw new ValidationError('Invalid reconciliationTimestamp in summary.');
+                }
+            } else if (!resultsForPersistence.summary.reconciliationTimestamp) {
+                throw new ValidationError('Missing reconciliationTimestamp in summary.');
+            }
 
 
             // 3. Prepare Data for Storage using ReportGeneratorService
@@ -111,7 +111,7 @@ export class ReconciledRecordsController {
 
     // --- Helper for Date Sanitization ---
     // Moved here from ReconciliationController. Consider moving to a dedicated service later.
-     private sanitizeDatesInDetails(detailsMap: Map<string, any>): void {
+    private sanitizeDatesInDetails(detailsMap: Map<string, any>): void {
         this.logger.debug('Sanitizing date fields in details map...');
         let itemsProcessed = 0;
         for (const [, supplierData] of detailsMap.entries()) {
@@ -125,14 +125,14 @@ export class ReconciledRecordsController {
                     try {
                         const parsedDate = new Date(originalValue);
                         record[field] = !isNaN(parsedDate.getTime()) ? parsedDate : null;
-                         if (isNaN(parsedDate.getTime())) this.logger.warn(`Could not parse date string "${originalValue}" for field ${field}. Setting to null.`);
+                        if (isNaN(parsedDate.getTime())) this.logger.warn(`Could not parse date string "${originalValue}" for field ${field}. Setting to null.`);
                     } catch {
-                         this.logger.warn(`Error parsing date string "${originalValue}" for field ${field}. Setting to null.`);
-                         record[field] = null;
+                        this.logger.warn(`Error parsing date string "${originalValue}" for field ${field}. Setting to null.`);
+                        record[field] = null;
                     }
                 } else {
-                     this.logger.warn(`Unexpected type "${typeof originalValue}" for date field ${field}. Setting to null.`);
-                     record[field] = null;
+                    this.logger.warn(`Unexpected type "${typeof originalValue}" for date field ${field}. Setting to null.`);
+                    record[field] = null;
                 }
             };
 

@@ -1,0 +1,18 @@
+services:
+  app:
+    image: itdebojit/gst-reconciliation-tool:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    ports:
+      - "8000:3000"
+    environment: {}
+    # Uncomment and set environment variables as needed
+    # NODE_ENV: production
+    # PORT: 3000
+    volumes:
+      - ./public:/app/public
+      # Uncomment below to mount your .env file
+      # - ./.env:/app/.env
+    restart: unless-stopped
