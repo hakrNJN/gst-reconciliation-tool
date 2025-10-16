@@ -20,10 +20,11 @@ const getEmptyAmountSummary = (): AmountSummary => ({ taxable: 0, igst: 0, cgst:
 
 // Helper to add a record's amounts to a summary object
 const addToAmountSummary = (summary: AmountSummary, record: InternalInvoiceRecord) => {
-    summary.taxable += record.taxableAmount;
-    summary.igst += record.igst;
-    summary.cgst += record.cgst;
-    summary.sgst += record.sgst;
+    const multiplier = record.documentType === 'C' ? -1 : 1;
+    summary.taxable += record.taxableAmount * multiplier;
+    summary.igst += record.igst * multiplier;
+    summary.cgst += record.cgst * multiplier;
+    summary.sgst += record.sgst * multiplier;
 };
 
 @singleton()
